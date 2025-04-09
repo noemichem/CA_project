@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# IDE specific files
+*.vscode
+*.idea
+
+#.exe files
+*.out
+*.exe
+*.app
+*.dll
