@@ -1,0 +1,24 @@
+# conf/config.yaml
+
+# Impostazioni relative al programma C++
+cpp_program:
+  executable_path: 'C:\Users\aless\source\repos\LetterCountProject\x64\Release\LetterCountProject.exe'  
+  input_file: Seagul_Italian.txt        # <-- MODIFICA QUESTO: Percorso del file di input
+
+# Impostazioni generali dell'esecuzione
+settings:
+  num_threads: 6                      # Numero di thread da utilizzare
+
+# Impostazioni relative all'output
+output:
+  csv_file: risultati_esecuzione.csv    # Nome del file CSV per salvare i risultati (verrà creato nella cartella di output di Hydra)
+
+# Impostazioni predefinite di Hydra (opzionale, ma utile per riferimento)
+hydra:
+  run:
+    # La directory di output sarà tipo: outputs/YYYY-MM-DD/HH-MM-SS
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    # Se usi il multirun, le sottocartelle saranno nominate in base ai parametri
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.override_dirname} # Nomi delle sottocartelle per i job di multirun
