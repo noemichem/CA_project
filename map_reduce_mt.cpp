@@ -6,6 +6,7 @@
 #include <cctype>
 #include <thread>
 #include <mutex>
+#include <string>
 
 // Mutex per accesso sicuro alla struttura condivisa
 std::mutex mtx;
@@ -35,9 +36,9 @@ std::map<char, int> reduce(const std::vector<std::pair<char, int>>& mapped_data)
 }
 
 int main() {
-    std::ifstream infile("LordOfTheRings_Italian.txt");
+    std::ifstream infile("Seagul_Italian.txt");
     if (!infile) {
-        std::cerr << "Errore nell'apertura del file LordOfTheRings_Italian.txt" << std::endl;
+        std::cerr << "Errore nell'apertura del file Seagul_Italian.txt" << std::endl;
         return 1;
     }
 

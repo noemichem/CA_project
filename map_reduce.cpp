@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <string>
 
 // Funzione Map: conta ogni lettera in una stringa e produce una lista di coppie (carattere, 1)
 std::vector<std::pair<char, int>> map(const std::string& text) {
@@ -27,7 +28,7 @@ std::map<char, int> reduce(const std::vector<std::pair<char, int>>& mapped_data)
 }
 
 int main() {
-    std::ifstream infile("LordOfTheRings_Italian.txt");
+    std::ifstream infile("Seagul_Italian.txt");
     if (!infile) {
         std::cerr << "Errore nell'apertura del file input.txt" << std::endl;
         return 1;
