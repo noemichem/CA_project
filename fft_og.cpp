@@ -2,6 +2,7 @@
 #include <vector>
 #include <complex>
 #include <cmath>
+#include <chrono>
 
 const double PI = acos(-1);
 
@@ -31,6 +32,18 @@ int main() {
     for (const auto& val : output) {
         std::cout << val << '\n';
     }
+
+    
+
+    // cronometro per misurare il tempo di esecuzione della DFT
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::cout << "DFT time: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+            << " microseconds\n";
+
 
     return 0;
 }
