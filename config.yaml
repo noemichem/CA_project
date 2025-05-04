@@ -1,24 +1,17 @@
-# conf/config.yaml
-
-# Impostazioni relative al programma C++
 cpp_program:
-  executable_path: 'C:\Users\aless\source\repos\LetterCountProject\x64\Release\LetterCountProject.exe'  
-  input_file: Seagul_Italian.txt        # <-- MODIFICA QUESTO: Percorso del file di input
+  executable_path: 'fft_og.exe'
 
-# Impostazioni generali dell'esecuzione
 settings:
-  num_threads: 6                      # Numero di thread da utilizzare
+  num_threads: 12           # Valore predefinito
+  input_file: 'data/numbers_1000.txt'  # File di input predefinito
 
-# Impostazioni relative all'output
 output:
-  csv_file: risultati_esecuzione.csv    # Nome del file CSV per salvare i risultati (verrà creato nella cartella di output di Hydra)
+  csv_file: risultati_esecuzione.csv
 
-# Impostazioni predefinite di Hydra (opzionale, ma utile per riferimento)
 hydra:
   run:
-    # La directory di output sarà tipo: outputs/YYYY-MM-DD/HH-MM-SS
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
-  sweep:
-    # Se usi il multirun, le sottocartelle saranno nominate in base ai parametri
-    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    subdir: ${hydra.job.override_dirname} # Nomi delle sottocartelle per i job di multirun
+  sweeper:
+    params:
+      settings.input_file: data/numbers_1000.txt, data/numbers_10000.txt, data/numbers_100000.txt, data/numbers_1000000.txt
+      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12

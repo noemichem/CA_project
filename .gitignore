@@ -40,3 +40,7 @@
 *.exe
 *.app
 *.dll
+
+# output folders
+multirun
+outputs

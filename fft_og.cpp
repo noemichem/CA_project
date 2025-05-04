@@ -2,8 +2,9 @@
 #include <vector>
 #include <complex>
 #include <cmath>
-#include <random>
+#include <fstream>
 #include <chrono>
+#include <omp.h>
 
 const double PI = acos(-1);
 
@@ -12,6 +13,7 @@ std::vector<std::complex<double>> dft(const std::vector<std::complex<double>>& i
     int n = input.size();
     std::vector<std::complex<double>> output(n);
 
+    #pragma omp parallel for
     for (int k = 0; k < n; ++k) {
         std::complex<double> sum(0.0, 0.0);
         for (int t = 0; t < n; ++t) {
@@ -20,53 +22,42 @@ std::vector<std::complex<double>> dft(const std::vector<std::complex<double>>& i
         }
         output[k] = sum;
     }
-
     return output;
 }
 
 int main(int argc, char* argv[]) {
-    // Dimensione del vettore di input (default 5000, modificabile da linea di comando)
-    int n = 50000;
-    if (argc > 1) {
-        n = std::stoi(argv[1]);
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
+        return 1;
     }
 
-    // Generazione di valori complessi random
-    std::vector<std::complex<double>> input;
-    input.reserve(n);
+    int n_threads = std::stoi(argv[1]);
+    std::string input_filename = argv[2];
 
-    std::mt19937_64 rng(std::random_device{}());
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-    for (int i = 0; i < n; ++i) {
-        double real = dist(rng);
-        double imag = dist(rng);
+    omp_set_num_threads(n_threads);
+
+    std::vector<std::complex<double>> input;
+    std::ifstream infile(input_filename);
+    if (!infile) {
+        std::cerr << "Errore nell'aprire il file: " << input_filename << "\n";
+        return 1;
+    }
+
+    double real, imag;
+    while (infile >> real >> imag) {
         input.emplace_back(real, imag);
     }
 
-    // Calcolo della DFT
-    auto output = dft(input);
+    std::cout << "Input size: " << input.size() << "\n";
+    std::cout << "Number of threads: " << n_threads << "\n";
 
-    (void)output; // Evita warning su variabile inutilizzata
-    return 0;
-}
-
-
-    std::cout << "DFT result:\n";
-    for (const auto& val : output) {
-        std::cout << val << '\n';
-    }
-
-
-
-    // cronometro per misurare il tempo di esecuzione della DFT
     auto start = std::chrono::high_resolution_clock::now();
-    
+    auto output = dft(input);
     auto end = std::chrono::high_resolution_clock::now();
 
     std::cout << "DFT time: "
-            << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
-            << " microseconds\n";
-
+              << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
+              << " microseconds\n";
 
     return 0;
 }
