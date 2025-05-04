@@ -41,6 +41,7 @@
 *.app
 *.dll
 
-# output folders
+# data and output folders
 multirun
 outputs
+data
