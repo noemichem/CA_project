@@ -1,5 +1,5 @@
 cpp_program:
-  executable_path: 'fft_og.exe'
+  executable_path: 'fft_og_parallel.exe'
 
 settings:
   num_threads: 12           # Valore predefinito
@@ -13,5 +13,5 @@ hydra:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_10000.txt, data/numbers_1000.txt
+      settings.input_file: data/numbers_10000.txt
       settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12
