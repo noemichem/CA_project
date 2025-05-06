@@ -8,7 +8,21 @@ from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
 
+_csv_deleted = False
+
 def run_cpp_program(executable_path: str, num_threads: int, input_file: str, csv_file: str):
+
+    global _csv_deleted
+    # alla prima chiamata, se il file esiste, lo rimuovo
+    if not _csv_deleted and os.path.isfile(csv_file):
+        try:
+            os.remove(csv_file)
+            log.info(f"Eliminato file dei risultati: {csv_file}")
+        except Exception as e:
+            log.warning(f"Impossibile eliminare {csv_file}: {e}")
+    _csv_deleted = True
+
+
     command = [executable_path, str(num_threads), input_file]
 
     log.info(f"Esecuzione del comando: {' '.join(command)}")
@@ -34,7 +48,7 @@ def run_cpp_program(executable_path: str, num_threads: int, input_file: str, csv
         with open(output_csv_path, mode='a', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             if not file_exists or os.path.getsize(output_csv_path) == 0:
-                writer.writerow(["Numero Thread", "File di Input", "Tempo di Esecuzione (s)", "Eseguibile"])
+                writer.writerow(["ThreadNumber", "InputFile", "ExecutionTime(s)", "ExecutableFile"])
             writer.writerow([num_threads, input_file, f"{execution_time:.4f}", executable_path])
         log.info(f"Risultati salvati in: {os.path.abspath(output_csv_path)}")
 
