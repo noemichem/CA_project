@@ -1,56 +1,25 @@
 import subprocess
-import time
 import csv
 import os
 import logging
 import hydra
+import time
 from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
 
-_csv_deleted = False
-
-def run_cpp_program(executable_path: str, num_threads: int, input_file: str, csv_file: str):
-
-    global _csv_deleted
-    # alla prima chiamata, se il file esiste, lo rimuovo
-    if not _csv_deleted and os.path.isfile(csv_file):
-        try:
-            os.remove(csv_file)
-            log.info(f"Eliminato file dei risultati: {csv_file}")
-        except Exception as e:
-            log.warning(f"Impossibile eliminare {csv_file}: {e}")
-    _csv_deleted = True
-
+def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> float:
 
     command = [executable_path, str(num_threads), input_file]
 
-    log.info(f"Esecuzione del comando: {' '.join(command)}")
-    log.info(f"Uso di {num_threads} thread con file di input: {input_file}")
-
-    start_time = time.time()
-
     try:
+        start_ns = time.perf_counter_ns()
         result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8', timeout=None)
-        end_time = time.time()
-        execution_time = end_time - start_time
-
-        log.info("Output del programma:")
-        for line in result.stdout.splitlines():
-            log.info(f"  [STDOUT] {line}")
-        if result.stderr:
-            log.warning("Output di STDERR:")
-            for line in result.stderr.splitlines():
-                log.warning(f"  [STDERR] {line}")
-
-        output_csv_path = csv_file
-        file_exists = os.path.isfile(output_csv_path)
-        with open(output_csv_path, mode='a', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            if not file_exists or os.path.getsize(output_csv_path) == 0:
-                writer.writerow(["ThreadNumber", "InputFile", "ExecutionTime(s)", "ExecutableFile"])
-            writer.writerow([num_threads, input_file, f"{execution_time:.4f}", executable_path])
-        log.info(f"Risultati salvati in: {os.path.abspath(output_csv_path)}")
+        end_ns = time.perf_counter_ns()
+        execution_time = (end_ns - start_ns) / 1_000_000  # in millisecondi
+        log.info(f"Tempo di esecuzione: {execution_time:.4f} ms")
+        
+        return execution_time
 
     except subprocess.CalledProcessError as e:
         log.error(f"Errore durante l'esecuzione del comando: {e}")
@@ -62,20 +31,51 @@ def run_cpp_program(executable_path: str, num_threads: int, input_file: str, csv
     except Exception as e:
         log.error(f"Errore inaspettato: {e}")
 
+    return None
+
+def salva_dettagli_csv(csv_file: str, results: list[float], num_threads: int, input_file: str, executable: str):
+    file_exists = os.path.isfile(csv_file)
+    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if not file_exists or os.path.getsize(csv_file) == 0:
+            writer.writerow(["Numero Esecuzione", "Numero Thread", "File di Input", "Tempo di Esecuzione (s)", "Eseguibile"])
+        for i, exec_time in enumerate(results):
+            writer.writerow([i + 1, num_threads, input_file, f"{exec_time:.4f}", executable])
+
+def salva_media_csv(csv_file: str, media: float, num_threads: int, input_file: str, executable: str):
+    file_exists = os.path.isfile(csv_file)
+    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        if not file_exists or os.path.getsize(csv_file) == 0:
+            writer.writerow(["Numero Thread", "File di Input", "Media Tempo di Esecuzione (s)", "Eseguibile"])
+        writer.writerow([num_threads, input_file, f"{media:.4f}", executable])
+
 @hydra.main(config_path="", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     log.info("Configurazione utilizzata:")
     executable = cfg.cpp_program.executable_path
     threads = cfg.settings.num_threads
     input_file = cfg.settings.input_file
-    output_csv = cfg.output.csv_file
+    dettagli_csv = cfg.output.dettagli_csv
+    media_csv = cfg.output.media_csv
 
-    run_cpp_program(
-        executable_path=executable,
-        num_threads=threads,
-        input_file=input_file,
-        csv_file=output_csv
-    )
+    execution_times = []
+
+    log.info(f"Esecuzione del comando: {' '.join([executable, str(threads), input_file])}")
+    log.info(f"Uso di {threads} thread con file di input: {input_file}")
+    for i in range(10):
+        log.info(f"Esecuzione numero {i+1}/10")
+        exec_time = run_cpp_program(executable, threads, input_file)
+        if exec_time is not None:
+            execution_times.append(exec_time)
+
+    if execution_times:
+        media = sum(execution_times) / len(execution_times)
+        log.info(f"Tempo medio di esecuzione: {media:.4f} secondi")
+        salva_dettagli_csv(dettagli_csv, execution_times, threads, input_file, executable)
+        salva_media_csv(media_csv, media, threads, input_file, executable)
+    else:
+        log.error("Nessuna esecuzione completata con successo.")
 
 if __name__ == "__main__":
     main()

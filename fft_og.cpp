@@ -3,7 +3,6 @@
 #include <complex>
 #include <cmath>
 #include <fstream>
-#include <chrono>
 #include <omp.h>
 
 const double PI = acos(-1);
@@ -26,6 +25,7 @@ std::vector<std::complex<double>> dft(const std::vector<std::complex<double>>& i
 }
 
 int main(int argc, char* argv[]) {
+
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
         return 1;
@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::complex<double>> input;
     std::ifstream infile(input_filename);
+
     if (!infile) {
         std::cerr << "Errore nell'aprire il file: " << input_filename << "\n";
         return 1;
@@ -48,16 +49,7 @@ int main(int argc, char* argv[]) {
         input.emplace_back(real, imag);
     }
 
-    std::cout << "Input size: " << input.size() << "\n";
-    std::cout << "Number of threads: " << n_threads << "\n";
-
-    auto start = std::chrono::high_resolution_clock::now();
     auto output = dft(input);
-    auto end = std::chrono::high_resolution_clock::now();
-
-    std::cout << "DFT time: "
-              << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()
-              << " microseconds\n";
 
     return 0;
 }
