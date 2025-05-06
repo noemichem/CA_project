@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 log = logging.getLogger(__name__)
 
 def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> float:
+
     command = [executable_path, str(num_threads), input_file]
 
     try:
