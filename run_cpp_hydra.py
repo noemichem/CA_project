@@ -4,13 +4,48 @@ import os
 import logging
 import hydra
 import time
+import math
 from omegaconf import DictConfig
 
 log = logging.getLogger(__name__)
 
-def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> float:
+def next_power_of_two(n):
+    return 1 if n == 0 else 2**math.ceil(math.log2(n))
 
-    command = [executable_path, str(num_threads), input_file]
+def pad_input_file_if_needed(original_file: str, executable: str) -> str:
+    if "fft_optimized_with_threads.exe" not in executable.lower():
+        return original_file  # Nessun padding necessario
+
+    temp_file = "temp_padded_input.txt"
+    data = []
+
+    with open(original_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) == 2:
+                real, imag = map(float, parts)
+                data.append((real, imag))
+
+    original_len = len(data)
+    padded_len = next_power_of_two(original_len)
+
+    if original_len == padded_len:
+        return original_file  # Già potenza di 2
+
+    # Padding con zeri
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        for real, imag in data:
+            f.write(f"{real} {imag}\n")
+        for _ in range(padded_len - original_len):
+            f.write("0.0 0.0\n")
+
+    log.info(f"File {original_file} padded da {original_len} a {padded_len} elementi")
+    return temp_file
+
+def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> float:
+    padded_file = pad_input_file_if_needed(input_file, executable_path)
+
+    command = [executable_path, str(num_threads), padded_file]
 
     try:
         start_ns = time.perf_counter_ns()
@@ -18,7 +53,7 @@ def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> 
         end_ns = time.perf_counter_ns()
         execution_time = (end_ns - start_ns) / 1_000_000  # in millisecondi
         log.info(f"Tempo di esecuzione: {execution_time:.4f} ms")
-        
+
         return execution_time
 
     except subprocess.CalledProcessError as e:
