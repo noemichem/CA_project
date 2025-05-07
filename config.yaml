@@ -1,17 +1,18 @@
 cpp_program:
-  executable_path: 'fft_og.exe'
+  executable_path: 'fft_og_parallel.exe'
 
 settings:
-  num_threads: 12           # Valore predefinito
+  num_threads: 15           # Valore predefinito
   input_file: 'data/numbers_1000.txt'  # File di input predefinito
 
 output:
-  csv_file: risultati_esecuzione.csv
+  dettagli_csv: "dettagli.csv"
+  media_csv: "medie.csv"
 
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_1000.txt, data/numbers_10000.txt, data/numbers_100000.txt, data/numbers_1000000.txt
-      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12
+      settings.input_file: data/numbers_1000.txt, data/numbers_10000.txt, data/numbers_100000.txt, data/numbers_200000.txt
+      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
