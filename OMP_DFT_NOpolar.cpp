@@ -13,7 +13,7 @@ std::vector<std::complex<double>> dft_fast(const std::vector<std::complex<double
 
     omp_set_num_threads(n_threads);
     // Parallelize both loops to improve load balancing
-    #pragma omp parallel for collapse(2) schedule(dynamic)
+    #pragma omp parallel for schedule(dynamic)
     for (int k = 0; k < n; ++k) {
         // Calcolo una sola volta il “passo” di rotazione per questo k
         double angle_step = -2 * PI * k / n;
@@ -63,6 +63,13 @@ int main(int argc, char* argv[]) {
 
     auto result = dft_fast(data, n_threads);
 
+    // Stampa dei primi 10 output
+    std::cout << "Primi 10 risultati DFT (no polar):\n";
+    for (int i = 0; i < std::min(10, (int)result.size()); ++i) {
+        std::cout << "  [" << i << "] "
+                  << result[i].real() << " + "
+                  << result[i].imag() << "i\n";
+    }
 
     return 0;
 }

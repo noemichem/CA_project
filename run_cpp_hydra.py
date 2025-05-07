@@ -13,7 +13,7 @@ def next_power_of_two(n):
     return 1 if n == 0 else 2**math.ceil(math.log2(n))
 
 def pad_input_file_if_needed(original_file: str, executable: str) -> str:
-    if "fft_optimized_with_threads.exe" not in executable.lower():
+    if "OMP_FFT.exe" not in executable.lower():
         return original_file  # Nessun padding necessario
 
     temp_file = "temp_padded_input.txt"
