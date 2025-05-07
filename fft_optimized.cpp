@@ -21,6 +21,7 @@ void FFT(Signal& a) {
         even[i] = a[i*2];
         odd[i] = a[i*2 + 1];
     }
+    
 
     FFT(even);
     FFT(odd);

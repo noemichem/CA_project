@@ -1,5 +1,5 @@
 cpp_program:
-  executable_path: 'fft_og.exe'
+  executable_path: 'fft_og_parallel.exe'
 
 settings:
   num_threads: 15           # Valore predefinito
