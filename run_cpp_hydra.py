@@ -73,7 +73,7 @@ def salva_dettagli_csv(csv_file: str, results: list[float], num_threads: int, in
     with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         if not file_exists or os.path.getsize(csv_file) == 0:
-            writer.writerow(["Numero Esecuzione", "Numero Thread", "File di Input", "Tempo di Esecuzione (s)", "Eseguibile"])
+            writer.writerow(["Numero Esecuzione", "Numero Thread", "File di Input", "Tempo di Esecuzione (ms)", "Eseguibile"])
         for i, exec_time in enumerate(results):
             writer.writerow([i + 1, num_threads, input_file, f"{exec_time:.4f}", executable])
 
@@ -82,7 +82,7 @@ def salva_media_csv(csv_file: str, media: float, num_threads: int, input_file: s
     with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         if not file_exists or os.path.getsize(csv_file) == 0:
-            writer.writerow(["Numero Thread", "File di Input", "Media Tempo di Esecuzione (s)", "Eseguibile"])
+            writer.writerow(["Numero Thread", "File di Input", "Media Tempo di Esecuzione (ms)", "Eseguibile"])
         writer.writerow([num_threads, input_file, f"{media:.4f}", executable])
 
 @hydra.main(config_path="", config_name="config", version_base=None)
@@ -106,7 +106,7 @@ def main(cfg: DictConfig) -> None:
 
     if execution_times:
         media = sum(execution_times) / len(execution_times)
-        log.info(f"Tempo medio di esecuzione: {media:.4f} secondi")
+        log.info(f"Tempo medio di esecuzione: {media:.4f} millisecondi")
         salva_dettagli_csv(dettagli_csv, execution_times, threads, input_file, executable)
         salva_media_csv(media_csv, media, threads, input_file, executable)
     else:
