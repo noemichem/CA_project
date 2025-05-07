@@ -3,7 +3,6 @@
 #include <vector>
 #include <complex>
 #include <cmath>
-#include <chrono>
 #include <omp.h>
 
 const double PI = acos(-1);
@@ -36,7 +35,6 @@ int main(int argc, char* argv[]) {
 
     std::ifstream ifs(filename);
     if (!ifs) {
-        std::cout << "Sono qui1" << "\n";
         std::cerr << "Error opening file: " << filename << "\n";
         return 1;
     }
@@ -55,13 +53,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }   
 
-
-    auto start = std::chrono::high_resolution_clock::now();
     auto result = dft_parallel(data, n_threads);
-    auto end = std::chrono::high_resolution_clock::now();
-
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Elapsed Time: " << elapsed.count() << "s\n";
 
 
     return 0;
