@@ -1,4 +1,4 @@
-Numero Thread,File di Input,Media Tempo di Esecuzione (s),Eseguibile
+Numero Thread,File di Input,Media Tempo di Esecuzione (ms),Eseguibile
 1,data/numbers_1000.txt,57.7873,fft_og.exe
 2,data/numbers_1000.txt,32.7720,fft_og.exe
 3,data/numbers_1000.txt,27.7845,fft_og.exe

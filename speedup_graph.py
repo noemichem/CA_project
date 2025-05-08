@@ -3,24 +3,19 @@ import matplotlib.pyplot as plt
 import os
 
 # === CONFIG ===
-csv_path = "dettagli.csv"
+csv_path = "medie.csv"
 output_plot = "speedup_plot.png"
 output_csv = "speedup.csv"
 
 # === LEGGI CSV ===
 df = pd.read_csv(csv_path)
 
-# Calcola la media del tempo per ciascun numero thread e file input
-grouped = df.groupby(['Numero Thread', 'File di Input']).agg({
-    'Tempo di Esecuzione (s)': 'mean'
-}).reset_index()
-
 # Calcola lo speedup rispetto alla versione con 1 thread per ogni file
 speedup_list = []
-for file_input in grouped['File di Input'].unique():
-    subset = grouped[grouped['File di Input'] == file_input].copy()
-    t1 = subset[subset['Numero Thread'] == 1]['Tempo di Esecuzione (s)'].values[0]
-    subset['Speedup'] = t1 / subset['Tempo di Esecuzione (s)']
+for file_input in df['File di Input'].unique():
+    subset = df[df['File di Input'] == file_input].copy()
+    t1 = subset[subset['Numero Thread'] == 1]['Media Tempo di Esecuzione (s)'].values[0]
+    subset['Speedup'] = t1 / subset['Media Tempo di Esecuzione (s)']
     speedup_list.append(subset)
 
 # Unisci tutti i risultati
