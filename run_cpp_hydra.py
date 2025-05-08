@@ -88,7 +88,7 @@ def salva_media_csv(csv_file: str, media: float, num_threads: int, input_file: s
 @hydra.main(config_path="", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     log.info("Configurazione utilizzata:")
-    executable = cfg.cpp_program.executable_path
+    executable = cfg.settings.executable
     threads = cfg.settings.num_threads
     input_file = cfg.settings.input_file
     dettagli_csv = cfg.output.dettagli_csv
