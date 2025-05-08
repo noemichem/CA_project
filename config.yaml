@@ -14,6 +14,6 @@ hydra:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_1000.txt, data/numbers_10000.txt, data/numbers_100000.txt, data/numbers_200000.txt
+      settings.input_file: data/numbers_1024.txt, data/numbers_16384.txt, data/numbers_131072.txt, data/numbers_262144.txt
       settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
-      setting.executable_path: OMP_DFT_polar.exe, OMP_DFT_NOpolar.exe
+      settings.executable_path: OMP_DFT_polar.exe, OMP_DFT_NOpolar.exe
