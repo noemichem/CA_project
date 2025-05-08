@@ -7,6 +7,7 @@
 
 const double PI = std::acos(-1);
 
+// FFT ricorsiva senza alcuna normalizzazione
 void FFT(std::vector<std::complex<double>>& a) {
     size_t n = a.size();
     if (n <= 1) return;
@@ -18,15 +19,15 @@ void FFT(std::vector<std::complex<double>>& a) {
         odd[i]  = a[2*i + 1];
     }
     
-    // Parallelize the two recursive calls if large enough
-    #pragma omp task shared(a) if(n > 1024)
+    // Parallelize le chiamate ricorsive se grande
+    #pragma omp task shared(even) if(n > 1024)
     FFT(even);
-    #pragma omp task shared(a) if(n > 1024)
+    #pragma omp task shared(odd) if(n > 1024)
     FFT(odd);
 
     #pragma omp taskwait
 
-    // ricombino con i twiddle factors
+    // ricombino con i twiddle factors senza scalare
     #pragma omp parallel for schedule(dynamic)
     for (size_t k = 0; k < n/2; ++k) {
         auto t = std::polar(1.0, -2 * PI * k / n) * odd[k];
@@ -52,7 +53,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Read all samples (real and imaginary parts) until EOF
     std::vector<std::complex<double>> data;
     double real, imag;
     while (ifs >> real >> imag) {
@@ -65,15 +65,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Esegui FFT in parallel region
+    // Esegui FFT in regione parallel
     #pragma omp parallel
     {
         #pragma omp single
         FFT(data);
     }
 
-    // Stampa dei primi 10 output
-    std::cout << "Primi 10 risultati FFT:\n";
+    // Stampa dei primi 10 output senza alcuna divisione
+    std::cout << "Primi 10 risultati FFT senza normalizzazione:\n";
     for (int i = 0; i < std::min<size_t>(10, data.size()); ++i) {
         std::cout << "  [" << i << "] "
                   << data[i].real() << " + "
