@@ -1,5 +1,5 @@
 cpp_program:
-  executable_path: 'OMP_DFT_polar.exe'
+  executable_path: 'OMP_DFT_NOpolar.exe'
 
 settings:
   num_threads: 15           # Valore predefinito
@@ -14,6 +14,5 @@ hydra:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_1024.txt, data/numbers_16384.txt, data/numbers_131072.txt, data/numbers_262144.txt
-      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
-      settings.executable_path: OMP_DFT_polar.exe, OMP_DFT_NOpolar.exe
+      settings.input_file: data/numbers_16384.txt
+      settings.num_threads: 4

@@ -4,7 +4,6 @@
 #include <complex>
 #include <cmath>
 #include <algorithm>
-#include <omp.h>
 
 using namespace std;
 
@@ -26,44 +25,36 @@ void bit_reverse(vector<complex<double>>& a) {
     }
 }
 
-// === Iterative radix-2 FFT with optional OpenMP parallelization ===
-void fft_iterative(vector<complex<double>>& a, int n_threads) {
+// === Iterative radix-2 FFT, single-threaded ===
+void fft_iterative(vector<complex<double>>& a) {
     size_t n = a.size();
     bit_reverse(a);
 
-    #pragma omp parallel num_threads(n_threads)
-    {
-        for (size_t len = 2; len <= n; len <<= 1) {
-            double ang = -2 * PI / len;
-            complex<double> wlen(cos(ang), sin(ang));
+    for (size_t len = 2; len <= n; len <<= 1) {
+        double ang = -2 * PI / len;
+        complex<double> wlen(cos(ang), sin(ang));
 
-            #pragma omp for schedule(static) nowait
-            for (size_t i = 0; i < n; i += len) {
-                complex<double> w(1);
-                for (size_t j = 0; j < len / 2; ++j) {
-                    complex<double> u = a[i + j];
-                    complex<double> v = a[i + j + len / 2] * w;
-                    a[i + j] = u + v;
-                    a[i + j + len / 2] = u - v;
-                    w *= wlen;
-                }
+        for (size_t i = 0; i < n; i += len) {
+            complex<double> w(1);
+            for (size_t j = 0; j < len / 2; ++j) {
+                complex<double> u = a[i + j];
+                complex<double> v = a[i + j + len / 2] * w;
+                a[i + j]         = u + v;
+                a[i + j + len / 2] = u - v;
+                w *= wlen;
             }
-            // implicit barrier qui solo se serve (rimuovendo nowait se c'è dipendenza)
         }
     }
 }
 
-
 // === MAIN ===
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
+    if (argc < 2) {
+        cerr << "Usage: " << argv[0] << " <input_file>\n";
         return 1;
     }
 
-    int n_threads = stoi(argv[1]);
-    const char* filename = argv[2];
-
+    const char* filename = argv[1];
     ifstream ifs(filename);
     if (!ifs) {
         cerr << "Error opening file: " << filename << "\n";
@@ -82,17 +73,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Controllo se la lunghezza è potenza di 2
+    // Controllo che la lunghezza sia potenza di 2
     size_t n = data.size();
     if ((n & (n - 1)) != 0) {
         cerr << "FFT requires input size to be a power of 2. Got " << n << ".\n";
         return 1;
     }
 
-    fft_iterative(data, n_threads);
+    // Calcola la FFT
+    fft_iterative(data);
 
+    // Stampa i primi 10 risultati
     cout << "Primi 10 risultati FFT:\n";
-    for (int i = 0; i < min(10, (int)data.size()); ++i) {
+    for (int i = 0; i < min<size_t>(10, data.size()); ++i) {
         cout << "  [" << i << "] "
              << data[i].real() << " + "
              << data[i].imag() << "i\n";

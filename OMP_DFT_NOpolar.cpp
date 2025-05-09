@@ -12,8 +12,9 @@ std::vector<std::complex<double>> dft_fast(const std::vector<std::complex<double
     std::vector<std::complex<double>> output(n);
 
     omp_set_num_threads(n_threads);
+
     // Parallelize both loops to improve load balancing
-    #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
     for (int k = 0; k < n; ++k) {
         // Calcolo una sola volta il “passo” di rotazione per questo k
         double angle_step = -2 * PI * k / n;
