@@ -64,13 +64,5 @@ int main(int argc, char* argv[]) {
 
     auto result = dft_fast(data, n_threads);
 
-    // Stampa dei primi 10 output
-    std::cout << "Primi 10 risultati DFT (no polar):\n";
-    for (int i = 0; i < std::min(10, (int)result.size()); ++i) {
-        std::cout << "  [" << i << "] "
-                  << result[i].real() << " + "
-                  << result[i].imag() << "i\n";
-    }
-
     return 0;
 }

@@ -4,6 +4,9 @@
 #include <complex>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <omp.h>
 
 using namespace std;
@@ -56,6 +59,13 @@ void fft_iterative(vector<complex<double>>& a, int n_threads) {
 
 // === MAIN ===
 int main(int argc, char* argv[]) {
+    
+    auto start_sys = std::chrono::system_clock::now();
+    std::time_t start_c = std::chrono::system_clock::to_time_t(start_sys);
+    std::cout << "Inizio esecuzione: "
+              << std::put_time(std::localtime(&start_c), "%Y-%m-%d %H:%M:%S")
+              << '\n';
+
     if (argc < 3) {
         cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
         return 1;
@@ -89,14 +99,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Esegui FFT
     fft_iterative(data, n_threads);
 
-    cout << "Primi 10 risultati FFT:\n";
-    for (int i = 0; i < min(10, (int)data.size()); ++i) {
-        cout << "  [" << i << "] "
-             << data[i].real() << " + "
-             << data[i].imag() << "i\n";
-    }
+    auto end_sys = std::chrono::system_clock::now();
+    std::time_t end_c = std::chrono::system_clock::to_time_t(end_sys);
+    std::cout << "Fine esecuzione:   "
+              << std::put_time(std::localtime(&end_c), "%Y-%m-%d %H:%M:%S")
+              << '\n';
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end_sys - start_sys);
+    std::cout << "Durata totale:     "
+              << elapsed.count() << " ms\n";
+
 
     return 0;
 }

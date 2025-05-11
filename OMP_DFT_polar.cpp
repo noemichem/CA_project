@@ -2,22 +2,23 @@
 #include <fstream>
 #include <vector>
 #include <complex>
+#include <cstdint>
 #include <cmath>
 #include <omp.h>
 
 const double PI = acos(-1);
 
 std::vector<std::complex<double>> dft_parallel(const std::vector<std::complex<double>>& input, int n_threads) {
-    int n = static_cast<int>(input.size());
-    std::vector<std::complex<double>> output(n);
-
+    
+    int64_t n64 = static_cast<int64_t>(input.size());
+    std::vector<std::complex<double>> output(n64);
+    
     omp_set_num_threads(n_threads);
-    // Parallelize both loops to improve load balancing
     #pragma omp parallel for collapse(2) schedule(dynamic)
-    for (int k = 0; k < n; ++k) {
-        for (int t = 0; t < n; ++t) {
-            double angle = -2 * PI * t * k / n;
-            output[k] += (input[t] * std::polar(1.0, angle));
+    for (int64_t k = 0; k < n64; ++k) {
+        for (int64_t t = 0; t < n64; ++t) {
+            long double angle = -2.0L * PI * t * k / n64;
+            output[k] += input[t] * std::polar(1.0, static_cast<double>(angle));
         }
     }
     return output;
@@ -25,7 +26,7 @@ std::vector<std::complex<double>> dft_parallel(const std::vector<std::complex<do
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
+        std::cerr << "Usage: " << argv[0] << " <num_threads> <input_file>";
         return 1;
     }
 
@@ -38,7 +39,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error opening file: " << filename << "\n";
         return 1;
     }
-
 
     // Read all samples (real and imaginary parts) until EOF
     std::vector<std::complex<double>> data;
@@ -54,13 +54,5 @@ int main(int argc, char* argv[]) {
     }   
 
     auto result = dft_parallel(data, n_threads);
-    // Stampa dei primi 10 output
-    std::cout << "Primi 10 risultati DFT (polar):\n";
-    for (int i = 0; i < std::min(10, (int)result.size()); ++i) {
-        std::cout << "  [" << i << "] "
-                  << result[i].real() << " + "
-                  << result[i].imag() << "i\n";
-    }
-
     return 0;
 }
