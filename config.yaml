@@ -14,5 +14,5 @@ hydra:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_1024.txt, data/numbers_16384.txt
-      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+      settings.input_file: data/numbers_16384.txt
+      settings.num_threads: 10

@@ -10,15 +10,16 @@ const double PI = acos(-1);
 
 std::vector<std::complex<double>> dft_parallel(const std::vector<std::complex<double>>& input, int n_threads) {
     
-    int64_t n64 = static_cast<int64_t>(input.size());
-    std::vector<std::complex<double>> output(n64);
+    int n = static_cast<int>(input.size());
+    std::vector<std::complex<double>> output(n);
     
     omp_set_num_threads(n_threads);
-    #pragma omp parallel for collapse(2) schedule(dynamic)
-    for (int64_t k = 0; k < n64; ++k) {
-        for (int64_t t = 0; t < n64; ++t) {
-            long double angle = -2.0L * PI * t * k / n64;
-            output[k] += input[t] * std::polar(1.0, static_cast<double>(angle));
+    
+    #pragma omp parallel for schedule(dynamic)
+    for (int k = 0; k < n; ++k) {
+        for (int t = 0; t < n; ++t) {
+            double angle = -2 * PI * t * k / n;
+            output[k] += input[t] * std::polar(1.0, angle);
         }
     }
     return output;
