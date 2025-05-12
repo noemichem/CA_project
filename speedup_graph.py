@@ -9,13 +9,14 @@ output_csv = "speedup.csv"
 
 # === LEGGI CSV ===
 df = pd.read_csv(csv_path)
+df = df[df["Eseguibile"] == "OMP_DFT_NOpolar.exe"]
 
 # Calcola lo speedup rispetto alla versione con 1 thread per ogni file
 speedup_list = []
 for file_input in df['File di Input'].unique():
     subset = df[df['File di Input'] == file_input].copy()
-    t1 = subset[subset['Numero Thread'] == 1]['Media Tempo di Esecuzione (s)'].values[0]
-    subset['Speedup'] = t1 / subset['Media Tempo di Esecuzione (s)']
+    t1 = subset[subset['Numero Thread'] == 1]['Media Tempo di Esecuzione (ms)'].values[0]
+    subset['Speedup'] = t1 / subset['Media Tempo di Esecuzione (ms)']
     speedup_list.append(subset)
 
 # Unisci tutti i risultati
