@@ -1,5 +1,5 @@
 cpp_program:
-  executable_path: 'OMP_DFT_polar.exe'
+  executable_path: 'OMP_FFT.exe'
 
 settings:
   num_threads: 15           # Valore predefinito
@@ -7,12 +7,12 @@ settings:
 
 output:
   dettagli_csv: "dettagli.csv"
-  media_csv: "medie.csv"
+  media_csv: "FFT_2°iter.csv"
 
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   sweeper:
     params:
-      settings.input_file: data/numbers_16384.txt
-      settings.num_threads: 10
+      settings.input_file: data/numbers_134217728.txt
+      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
