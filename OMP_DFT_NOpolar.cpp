@@ -24,7 +24,7 @@ std::vector<std::complex<double>> dft_fast(const std::vector<std::complex<double
         std::complex<double> sum(0.0, 0.0);
         for (int t = 0; t < n; ++t) {
             sum += input[t] * cur;
-            cur *= W;     // aggiorno la rotazione senza richiami a sin/cos
+            cur *= W; 
         }
         output[k] = sum;
     }
