@@ -1,13 +1,13 @@
 cpp_program:
-  executable_path: 'cpu_version/OMP_FFT.exe'
+  executable_path: 'scripts/cpu_version/OMP_FFT.exe'
 
 settings:
   num_threads: 15           # Valore predefinito
-  input_file: 'data/numbers_1000.txt'  # File di input predefinito
+  input_file: 'data/numbers_1024.txt'  # File di input predefinito
 
 output:
-  dettagli_csv: "results/dettagli.csv"
-  media_csv: "FFT_2°iter.csv"
+  dettagli_csv: "results/tables/dettagli.csv"
+  media_csv: "resultes/tables/medie.csv"
 
 hydra:
   run:

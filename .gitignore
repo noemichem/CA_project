@@ -44,7 +44,7 @@
 # data and output folders
 multirun
 outputs
-data
+data/*.txt
 FFT_2°iter.csv
 
 .vs

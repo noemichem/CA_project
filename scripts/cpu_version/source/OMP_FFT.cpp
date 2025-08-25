@@ -11,21 +11,21 @@
 
 using namespace std;
 
-static constexpr double PI = acos(-1);
+static double PI = acos(-1);
 
-// === FFT iterativa con bit-reverse e butterfly in un'unica regione parallela ===
+// === Iterative FFT with bit-reversal and butterfly in a single parallel region ===
 void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
     size_t n = a.size();
-    // calcolo log2(n)
+    // compute log2(n)
     int logn = 0;
     while ((size_t(1) << logn) < n) ++logn;
 
-    // Imposto il numero di thread globale
+    // Set the global number of threads
     omp_set_num_threads(n_threads);
 
     #pragma omp parallel
     {
-        // 1) Fase di bit-reverse parallelizzata
+        // 1) Bit-reversal phase (parallelized)
         #pragma omp for schedule(static)
         for (size_t i = 0; i < n; ++i) {
             size_t rev = 0;
@@ -38,9 +38,9 @@ void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
                 swap(a[i], a[rev]);
             }
         }
-        // Barriera implicita: tutti i thread terminano la bit-reverse
+        // Implicit barrier: all threads finish bit-reversal
 
-        // 2) Ciclo sui livelli di FFT (butterflies)
+        // 2) FFT levels loop (butterflies)
         for (size_t len = 2; len <= n; len <<= 1) {
             double ang = -2 * PI / len;
             complex<double> wlen(cos(ang), sin(ang));
@@ -56,7 +56,6 @@ void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
                     w *= wlen;
                 }
             }
-            // Barriera implicita al termine di ogni livello
         }
     }
 }
@@ -71,10 +70,10 @@ int main(int argc, char* argv[]) {
     int n_threads = stoi(argv[1]);
     const char* filename = argv[2];
 
-    // === Fase di Lettura ===
+    // === Reading Phase ===
     auto start_read_sys = chrono::system_clock::now();
     time_t start_read_c = chrono::system_clock::to_time_t(start_read_sys);
-    cout << "Inizio Lettura: "
+    cout << "Start Reading: "
          << put_time(localtime(&start_read_c), "%Y-%m-%d %H:%M:%S")
          << '\n';
 
@@ -104,38 +103,35 @@ int main(int argc, char* argv[]) {
 
     auto end_read_sys = chrono::system_clock::now();
     time_t end_read_c = chrono::system_clock::to_time_t(end_read_sys);
-    cout << "Fine Lettura:    "
+    cout << "End Reading:    "
          << put_time(localtime(&end_read_c), "%Y-%m-%d %H:%M:%S")
          << '\n';
 
     auto duration_read = chrono::duration_cast<chrono::milliseconds>(end_read_sys - start_read_sys);
-    cout << "Durata Lettura:  " << duration_read.count() << " ms\n";
+    cout << "Reading Time:   " << duration_read.count() << " ms\n";
 
-    for (size_t i = 1; i < 21; ++i) {
-        
+    // === FFT Processing Phase ===
+    auto start_fft_sys = chrono::system_clock::now();
+    time_t start_fft_c = chrono::system_clock::to_time_t(start_fft_sys);
+    cout << "Start FFT:      "
+        << put_time(localtime(&start_fft_c), "%Y-%m-%d %H:%M:%S")
+        << '\n'
+        << "Number of threads: " << n_threads << '\n';
 
-        // === Fase di Elaborazione FFT ===
-        auto start_fft_sys = chrono::system_clock::now();
-        time_t start_fft_c = chrono::system_clock::to_time_t(start_fft_sys);
-        cout << "Inizio FFT:      "
-            << put_time(localtime(&start_fft_c), "%Y-%m-%d %H:%M:%S")
-            << '\n'
-            << "No. di thread: " << i << '\n';
+    fft_iterative_merged(data, n_threads);
 
-        fft_iterative_merged(data, i);
+    auto end_fft_sys = chrono::system_clock::now();
+    time_t end_fft_c = chrono::system_clock::to_time_t(end_fft_sys);
+    cout << "End FFT:        "
+        << put_time(localtime(&end_fft_c), "%Y-%m-%d %H:%M:%S")
+        << '\n';
 
-        auto end_fft_sys = chrono::system_clock::now();
-        time_t end_fft_c = chrono::system_clock::to_time_t(end_fft_sys);
-        cout << "Fine FFT:        "
-            << put_time(localtime(&end_fft_c), "%Y-%m-%d %H:%M:%S")
-            << '\n';
+    auto duration_fft = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_fft_sys);
+    cout << "FFT Time:       " << duration_fft.count() << " ms\n";
 
-        auto duration_fft = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_fft_sys);
-        cout << "Durata FFT:      " << duration_fft.count() << " ms\n";
+    // === Total Time ===
+    auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_read_sys);
+    cout << "Total Time:     " << duration_total.count() << " ms\n";
 
-        // === Tempo Totale ===
-        auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_read_sys);
-        cout << "Durata Totale:   " << duration_total.count() << " ms\n";
-    }
     return 0;
 }

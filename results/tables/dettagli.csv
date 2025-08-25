@@ -118,7 +118,8 @@ Numero Esecuzione,Numero Thread,File di Input,Tempo di Esecuzione (ms),Eseguibil
 1,17,data/numbers_262144.txt,180802.8220,OMP_DFT_NOpolar.exe
 1,18,data/numbers_262144.txt,178435.2056,OMP_DFT_NOpolar.exe
 1,19,data/numbers_262144.txt,176022.8256,OMP_DFT_NOpolar.exe
-1,20,data/numbers_262144.txt,174427.1704,OMP_DFT_NOpolar.exe1,1,data/numbers_1024.txt,161.0511,OMP_DFT_polar.exe
+1,20,data/numbers_262144.txt,174427.1704,OMP_DFT_NOpolar.exe
+1,1,data/numbers_1024.txt,161.0511,OMP_DFT_polar.exe
 1,2,data/numbers_1024.txt,226.8044,OMP_DFT_polar.exe
 1,3,data/numbers_1024.txt,234.7803,OMP_DFT_polar.exe
 1,4,data/numbers_1024.txt,225.9154,OMP_DFT_polar.exe

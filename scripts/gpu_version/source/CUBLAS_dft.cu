@@ -24,7 +24,9 @@
         exit(EXIT_FAILURE); \
     }
 
-const double PI = acos(-1.0);
+// OPTIMIZATION: Declare PI in the GPU's constant memory.
+// This memory is cached and optimized for read-only access by all threads.
+__constant__ double d_PI;
 
 /**
  * @brief Kernel to generate the N x N DFT matrix directly on the GPU.
@@ -37,7 +39,7 @@ __global__ void generate_dft_matrix_kernel(cuDoubleComplex* dft_matrix, int n) {
     int col = blockIdx.x * blockDim.x + threadIdx.x; // t
 
     if (row < n && col < n) {
-        double angle = -2.0 * PI * row * col / n;
+        double angle = -2.0 * d_PI * row * col / n;
         dft_matrix[row * n + col] = make_cuDoubleComplex(cos(angle), sin(angle));
     }
 }
@@ -57,6 +59,10 @@ std::vector<std::complex<double>> dft_gpu_cublas(const std::vector<std::complex<
     CHECK_CUDA_ERROR(cudaEventCreate(&stop_compute));
 
     CHECK_CUDA_ERROR(cudaEventRecord(start_total));
+
+    // Initialize PI on the host and copy it to the GPU's constant memory
+    const double h_PI = acos(-1.0);
+    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(double)));
 
     int n = input.size();
     size_t vector_size = n * sizeof(cuDoubleComplex);
