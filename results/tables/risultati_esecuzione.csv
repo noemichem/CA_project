@@ -1,6 +1,0 @@
-ThreadNumber,InputFile,ExecutionTime(s),ExecutableFile
-1,data/numbers_10000.txt,39.2693,fft_og_parallel.exe
-2,data/numbers_10000.txt,26.3586,fft_og_parallel.exe
-3,data/numbers_10000.txt,19.6464,fft_og_parallel.exe
-4,data/numbers_10000.txt,16.6429,fft_og_parallel.exe
-5,data/numbers_10000.txt,14.2396,fft_og_parallel.exe
