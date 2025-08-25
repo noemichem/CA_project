@@ -7,10 +7,22 @@
 #include <cmath>
 #include <iomanip>
 #include <cuda_runtime.h>
+#include <cuComplex.h>
 
 using namespace std;
 
-const double PI = acos(-1);
+// Macro for robust CUDA error checking
+#define CHECK_CUDA_ERROR(err) \
+    if (err != cudaSuccess) { \
+        std::cerr << "CUDA Error: " << cudaGetErrorString(err) \
+                  << " in file " << __FILE__ \
+                  << " at line " << __LINE__ << std::endl; \
+        exit(EXIT_FAILURE); \
+    }
+    
+// OPTIMIZATION: Declare PI in the GPU's constant memory.
+// This memory is cached and optimized for read-only access by all threads.
+__constant__ double d_PI;
 
 // === KERNEL FFT: esegue un singolo "stage" ===
 __global__ void fft_stage(cuFloatComplex* data, int n, int step) {
@@ -23,7 +35,7 @@ __global__ void fft_stage(cuFloatComplex* data, int n, int step) {
         cuFloatComplex u = data[i];
         cuFloatComplex v = data[i + halfStep];
 
-        float angle = -2.0f * M_PI * (tid % halfStep) / step;
+        float angle = -2.0f * d_PI * (tid % halfStep) / step;
         cuFloatComplex w = make_cuFloatComplex(cosf(angle), sinf(angle));
 
         cuFloatComplex t = make_cuFloatComplex(
@@ -39,6 +51,10 @@ __global__ void fft_stage(cuFloatComplex* data, int n, int step) {
 // === GPU FFT Iterativa ===
 void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
              float& avgTimeMs, float& gflops) {
+    // Initialize PI on the host and copy it to the GPU's constant memory
+    const double h_PI = acos(-1.0);
+    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(double)));
+
     int N = input.size();
     size_t size = N * sizeof(cuFloatComplex);
 
