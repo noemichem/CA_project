@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
 
     int threadsPerBlock = stoi(argv[1]);
     const char* filename = argv[2];
-    int numRuns = (argc >= 4) ? std::max(1, std::stoi(argv[3])) : 5; // default 5
+    int numRuns = (argc >= 4) ? std::max(1, std::stoi(argv[3])) : 1; // default 1
 
     // Measure file reading time
     auto startRead = chrono::high_resolution_clock::now();

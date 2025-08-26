@@ -55,7 +55,12 @@ if ($InputFiles.Count -eq 0) {
 # === RUN PROFILING ===
 foreach ($exe in $ExeFiles) {
     $ExeName = [System.IO.Path]::GetFileNameWithoutExtension($exe.Name)
-    
+
+    if ($ExeName -notmatch 'NOE') {
+        Write-Host "Skipping $($exe.Name) to perform only NOE profile"
+        continue
+    }
+
     foreach ($InputFile in $InputFiles) {
         $InputName = [System.IO.Path]::GetFileNameWithoutExtension($InputFile.Name)
 
