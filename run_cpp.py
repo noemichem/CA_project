@@ -1,47 +1,100 @@
+import argparse
 import subprocess
-import time
-import sys
 import csv
 import os
+import re
 
-def run_cpp_program(executable_path, input_file, num_threads, csv_file="risultati.csv"):
-    # Costruisci il comando da eseguire
-    command = [executable_path, str(num_threads), input_file]
+CPU_CSV = "results/tables/CPU_details.csv"
+GPU_CSV = "results/tables/GPU_details.csv"
 
-    print(f"Esecuzione del programma con {num_threads} thread...")
+def run_executable(executable, num_threads, input_file, num_runs=1, is_cuda=False):
+    # Costruisci il comando
+    cmd = [executable, str(num_threads), input_file, str(num_runs)]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
-    start_time = time.time()
+    if result.returncode != 0:
+        print("Errore eseguendo il programma:", result.stderr)
+        return None
 
-    try:
-        # Esegui il programma C++
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        end_time = time.time()
-        execution_time = end_time - start_time
+    # Parsing output
+    output = result.stdout.splitlines()
+    times = {"ReadingTime": None, "TotalTime": None, "ExecutionTimes": []}
 
-        print("Output del programma:")
-        print(result.stdout)
+    for line in output:
+        if line.startswith("[RESULTS] ReadingTime:"):
+            m = re.search(r"(\d+)ms", line)
+            if m:
+                times["ReadingTime"] = int(m.group(1))
 
-        print(f"\nTempo di esecuzione: {execution_time:.4f} secondi")
+        elif line.startswith("[RESULTS] ExecutionTime"):
+            m_run = re.search(r"run=(\d+)", line)
+            m_val = re.search(r"(\d+)ms", line)
+            if m_run and m_val:
+                run_id = int(m_run.group(1))
+                val = int(m_val.group(1))
+                times["ExecutionTimes"].append((run_id, val))
 
-        # Scrivi i risultati nel file CSV
-        file_exists = os.path.isfile(csv_file)
-        with open(csv_file, mode='a', newline='') as file:
-            writer = csv.writer(file)
-            if not file_exists:
-                writer.writerow(["Numero Thread", "Tempo di Esecuzione (s)"])
-            writer.writerow([num_threads, f"{execution_time:.4f}"])
+        elif line.startswith("[RESULTS] TotalTime:"):
+            m = re.search(r"(\d+)ms", line)
+            if m:
+                times["TotalTime"] = int(m.group(1))
 
-    except subprocess.CalledProcessError as e:
-        print("Errore nell'esecuzione del programma:")
-        print(e.stderr)
+    return times
+
+
+def save_to_csv(times, executable, num_threads, input_file, is_cuda=False):
+    os.makedirs("results/tables", exist_ok=True)
+    
+    csv_path = GPU_CSV if is_cuda else CPU_CSV
+    exe_name = os.path.basename(executable)
+    file_name = os.path.basename(input_file)
+
+    file_exists = os.path.isfile(csv_path)
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.writer(f)
+
+        # Header
+        if not file_exists:
+            if is_cuda:
+                header = ["Num Execution", "Threads per Block", "Input File", "Run", "Execution Time (ms)", "Executable"]
+            else:
+                header = ["Num Execution", "Num Threads", "Input File", "Run", "Execution Time (ms)", "Executable"]
+            writer.writerow(header)
+            num_exec = 1
+        else:
+            # Leggi ultima colonna Num Execution
+            with open(csv_path, "r") as fr:
+                lines = list(csv.reader(fr))
+                if len(lines) > 1:
+                    last_num_exec = max(int(row[0]) for row in lines[1:])
+                    num_exec = last_num_exec + 1
+                else:
+                    num_exec = 1
+
+        # Scrivi righe
+        for run_id, val in sorted(times["ExecutionTimes"]):
+            if is_cuda:
+                # Se l'eseguibile è cuFFT, Threads per Block = None
+                threads_value = None if "cuFFT" in exe_name else num_threads
+                row = [num_exec, threads_value, file_name, run_id, val, exe_name]
+            else:
+                row = [num_exec, num_threads, file_name, run_id, val, exe_name]
+            writer.writerow(row)
+
+    print(f"{len(times['ExecutionTimes'])} risultati salvati in {csv_path} (Num Execution = {num_exec})")
+
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Uso: python run_cpp.py <path_eseguibile> <file_input> <num_thread>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Wrapper per eseguibili CPU/CUDA e salvataggio tempi su CSV")
+    parser.add_argument("executable", help="Percorso dell'eseguibile")
+    parser.add_argument("num_threads", type=int, help="Numero di thread (CPU) o Threads per Block (CUDA)")
+    parser.add_argument("input_file", help="File di input")
+    parser.add_argument("num_runs", type=int, help="Numero di esecuzioni")
+    parser.add_argument("--cuda", action="store_true", help="Esegui come script CUDA/cuFFT")
 
-    executable_path = sys.argv[1]
-    input_file = sys.argv[2]
-    num_threads = int(sys.argv[3])
+    args = parser.parse_args()
 
-    run_cpp_program(executable_path, input_file, num_threads)
+    times = run_executable(args.executable, args.num_threads, args.input_file, args.num_runs, is_cuda=args.cuda)
+    if times:
+        save_to_csv(times, args.executable, args.num_threads, args.input_file, is_cuda=args.cuda)

@@ -1,0 +1,13 @@
+Num Execution,Num Threads,Input File,Run,Execution Time (ms),Executable
+1,256,numbers_131072.txt,1,95731,CUDA_fft.exe
+1,256,numbers_131072.txt,2,19517,CUDA_fft.exe
+1,256,numbers_131072.txt,3,19808,CUDA_fft.exe
+1,256,numbers_131072.txt,4,92989,CUDA_fft.exe
+2,256,numbers_131072.txt,1,96512,CUDA_fft.exe
+2,256,numbers_131072.txt,2,22282,CUDA_fft.exe
+2,256,numbers_131072.txt,3,16845,CUDA_fft.exe
+2,256,numbers_131072.txt,4,21875,CUDA_fft.exe
+3,256,numbers_131072.txt,1,3059,CUDA_fft.exe
+3,256,numbers_131072.txt,2,38694,CUDA_fft.exe
+3,256,numbers_131072.txt,3,12621,CUDA_fft.exe
+3,256,numbers_131072.txt,4,1849,CUDA_fft.exe

@@ -1,0 +1,21 @@
+Num Execution,Threads per Block,Input File,Run,Execution Time (ms),Executable
+1,256,numbers_131072.txt,1,18058,CUDA_fft.exe
+1,256,numbers_131072.txt,2,38483,CUDA_fft.exe
+1,256,numbers_131072.txt,3,31382,CUDA_fft.exe
+1,256,numbers_131072.txt,4,42294,CUDA_fft.exe
+2,256,numbers_1048576.txt,1,528,CUDA_fft.exe
+2,256,numbers_1048576.txt,2,6573,CUDA_fft.exe
+2,256,numbers_1048576.txt,3,8786,CUDA_fft.exe
+2,256,numbers_1048576.txt,4,3899,CUDA_fft.exe
+3,256,numbers_1048576.txt,1,53587,CUDA_FFT_NOE.exe
+3,256,numbers_1048576.txt,2,51174,CUDA_FFT_NOE.exe
+3,256,numbers_1048576.txt,3,94208,CUDA_FFT_NOE.exe
+3,256,numbers_1048576.txt,4,50938,CUDA_FFT_NOE.exe
+4,,numbers_1048576.txt,1,6709,CUDA_cuFFT.exe
+4,,numbers_1048576.txt,2,1689,CUDA_cuFFT.exe
+4,,numbers_1048576.txt,3,95917,CUDA_cuFFT.exe
+4,,numbers_1048576.txt,4,70458,CUDA_cuFFT.exe
+5,,numbers_1048576.txt,1,8786,CUDA_cuFFT.exe
+5,,numbers_1048576.txt,2,77379,CUDA_cuFFT.exe
+5,,numbers_1048576.txt,3,76326,CUDA_cuFFT.exe
+5,,numbers_1048576.txt,4,74106,CUDA_cuFFT.exe

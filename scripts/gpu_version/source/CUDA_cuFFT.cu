@@ -2,21 +2,18 @@
 #include <fstream>
 #include <vector>
 #include <complex>
-#include <cmath>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
-#include <cufft.h> // Header for the cuFFT library
+#include <cufft.h>
+#include <chrono>
 
-// Macro for robust CUDA error checking
 #define CHECK_CUDA_ERROR(err) \
     if (err != cudaSuccess) { \
         std::cerr << "CUDA Error: " << cudaGetErrorString(err) \
-                  << " in file " << __FILE__ \
-                  << " at line " << __LINE__ << std::endl; \
+                  << " in file " << __FILE__ << " at line " << __LINE__ << std::endl; \
         exit(EXIT_FAILURE); \
     }
 
-// Macro for robust cuFFT error checking
 #define CHECK_CUFFT_ERROR(status) \
     if (status != CUFFT_SUCCESS) { \
         std::cerr << "cuFFT Error in file " << __FILE__ \
@@ -24,116 +21,116 @@
         exit(EXIT_FAILURE); \
     }
 
-/**
- * @brief Host function to execute the FFT on the GPU using the cuFFT library.
- * This is the most optimized approach, leveraging NVIDIA's dedicated FFT algorithms.
- * @param input The input signal vector. Its size MUST be a power of 2 for best performance.
- * @return A vector containing the FFT result.
- */
-std::vector<std::complex<double>> fft_gpu_cufft(const std::vector<std::complex<double>>& input) {
-    cudaEvent_t start_total, stop_total, start_compute, stop_compute;
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_total));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_total));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_compute));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_compute));
-
-    CHECK_CUDA_ERROR(cudaEventRecord(start_total));
+// --- Host function: FFT with cuFFT and detailed timing ---
+std::vector<std::complex<double>> fft_gpu_cufft(const std::vector<std::complex<double>>& input,
+                                               float& totalExecTime, float& kernelTime,
+                                               float& h2dTime, float& d2hTime) {
 
     int n = input.size();
     size_t vector_size = n * sizeof(cuDoubleComplex);
 
-    // 1. Allocate GPU memory
-    cuDoubleComplex *d_data;
-    CHECK_CUDA_ERROR(cudaMalloc((void**)&d_data, vector_size));
+    // Allocate device memory
+    cuDoubleComplex* d_data;
+    CHECK_CUDA_ERROR(cudaMalloc(&d_data, vector_size));
 
-    // Convert input to cuDoubleComplex format
+    // Convert input to cuDoubleComplex
     std::vector<cuDoubleComplex> h_input(n);
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
         h_input[i] = make_cuDoubleComplex(input[i].real(), input[i].imag());
-    }
 
-    // 2. Copy input vector from Host to Device
+    // Host->Device
+    cudaEvent_t startH2D, stopH2D;
+    CHECK_CUDA_ERROR(cudaEventCreate(&startH2D));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stopH2D));
+    CHECK_CUDA_ERROR(cudaEventRecord(startH2D));
     CHECK_CUDA_ERROR(cudaMemcpy(d_data, h_input.data(), vector_size, cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaEventRecord(stopH2D));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stopH2D));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&h2dTime, startH2D, stopH2D));
 
-    CHECK_CUDA_ERROR(cudaEventRecord(start_compute));
+    // Kernel (FFT) execution
+    cudaEvent_t startKernel, stopKernel;
+    CHECK_CUDA_ERROR(cudaEventCreate(&startKernel));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stopKernel));
+    CHECK_CUDA_ERROR(cudaEventRecord(startKernel));
 
-    // 3. Create a cuFFT plan
     cufftHandle plan;
-    CHECK_CUFFT_ERROR(cufftPlan1d(&plan, n, CUFFT_Z2Z, 1)); // Z2Z: Double precision, Complex-to-Complex
-
-    // 4. Execute the FFT
-    // The transformation is done in-place, so d_data will be overwritten with the result.
+    CHECK_CUFFT_ERROR(cufftPlan1d(&plan, n, CUFFT_Z2Z, 1));
     CHECK_CUFFT_ERROR(cufftExecZ2Z(plan, d_data, d_data, CUFFT_FORWARD));
 
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_compute));
+    CHECK_CUDA_ERROR(cudaEventRecord(stopKernel));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stopKernel));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, startKernel, stopKernel));
 
-    // 5. Copy result from Device to Host
+    // Device->Host
     std::vector<cuDoubleComplex> h_output(n);
+    cudaEvent_t startD2H, stopD2H;
+    CHECK_CUDA_ERROR(cudaEventCreate(&startD2H));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stopD2H));
+    CHECK_CUDA_ERROR(cudaEventRecord(startD2H));
     CHECK_CUDA_ERROR(cudaMemcpy(h_output.data(), d_data, vector_size, cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaEventRecord(stopD2H));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stopD2H));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, startD2H, stopD2H));
 
-    // Convert result back to std::complex
+    // Convert to std::complex
     std::vector<std::complex<double>> output(n);
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
         output[i] = { cuCreal(h_output[i]), cuCimag(h_output[i]) };
-    }
 
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_total));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stop_total));
+    // Total execution time
+    totalExecTime = h2dTime + kernelTime + d2hTime;
 
-    float ms_compute = 0, ms_total = 0;
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms_compute, start_compute, stop_compute));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms_total, start_total, stop_total));
-
-    std::cout << "--- cuFFT Version ---" << std::endl;
-    std::cout << "Input size N: " << n << std::endl;
-    std::cout << "GPU computation time (FFT execution) (ms): " << ms_compute << std::endl;
-    std::cout << "Total time (Transfers + Computation) (ms): " << ms_total << std::endl;
-
-    // 6. Cleanup
+    // Cleanup
     CHECK_CUFFT_ERROR(cufftDestroy(plan));
     CHECK_CUDA_ERROR(cudaFree(d_data));
-    CHECK_CUDA_ERROR(cudaEventDestroy(start_total));
-    CHECK_CUDA_ERROR(cudaEventDestroy(stop_total));
-    CHECK_CUDA_ERROR(cudaEventDestroy(start_compute));
-    CHECK_CUDA_ERROR(cudaEventDestroy(stop_compute));
+    cudaEventDestroy(startH2D); cudaEventDestroy(stopH2D);
+    cudaEventDestroy(startKernel); cudaEventDestroy(stopKernel);
+    cudaEventDestroy(startD2H); cudaEventDestroy(stopD2H);
 
     return output;
 }
 
+// --- MAIN ---
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <input_file>\n";
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <threads_per_block> <input_file> [num_runs]\n";
         return 1;
     }
 
-    const char* filename = argv[1];
+    int threadsPerBlock = std::max(1, std::stoi(argv[1])); // Not used in this algorithm but kept for compatibility with other implementations
+    const char* filename = argv[2];
+    int num_runs = (argc >= 4) ? std::max(1, std::stoi(argv[3])) : 1;
+
+    // File reading
+    auto t_start = std::chrono::high_resolution_clock::now();
     std::ifstream ifs(filename);
-    if (!ifs) {
-        std::cerr << "Error: could not open file " << filename << "\n";
-        return 1;
-    }
+    if (!ifs) { std::cerr << "Error opening file.\n"; return 1; }
 
     std::vector<std::complex<double>> data;
-    double real, imag;
-    while (ifs >> real >> imag) {
-        data.emplace_back(real, imag);
-    }
+    double re, im;
+    while (ifs >> re >> im)
+        data.emplace_back(re, im);
     ifs.close();
+    auto t_end = std::chrono::high_resolution_clock::now();
+    float readTime = std::chrono::duration<float, std::milli>(t_end - t_start).count();
+    std::cout << "[RESULTS] ReadingTime: " << readTime << "ms\n";
 
-    if (data.empty()) {
-        std::cerr << "Error: no data read from file " << filename << "\n";
-        return 1;
+    // Run multiple times
+    float totalTimeSum = 0;
+    for (int run = 1; run <= num_runs; ++run) {
+        float totalExec = 0, kernelTime = 0, h2dTime = 0, d2hTime = 0;
+        auto result = fft_gpu_cufft(data, totalExec, kernelTime, h2dTime, d2hTime);
+
+        std::cout << "[RESULTS] ExecutionTime(run=" << run << "): " << totalExec << "ms\n";
+        std::cout << "  (Details) Host->Device: " << h2dTime << "ms\n";
+        std::cout << "  (Details) Kernel: " << kernelTime << "ms\n";
+        std::cout << "  (Details) Device->Host: " << d2hTime << "ms\n";
+
+        totalTimeSum += totalExec;
     }
-    
-    // For best performance, FFT input size should be a power of 2.
-    size_t n = data.size();
-    if ((n > 0) && ((n & (n - 1)) != 0)) {
-        std::cout << "Warning: Input size " << n << " is not a power of 2. cuFFT performance may be suboptimal." << std::endl;
-    }
 
-
-    // Execute the FFT on the GPU using cuFFT
-    auto result = fft_gpu_cufft(data);
+    std::cout << "[RESULTS] TotalTime: " << (readTime + totalTimeSum) << "ms\n";
 
     return 0;
 }

@@ -5,7 +5,6 @@
 #include <cmath>
 #include <algorithm>
 #include <chrono>
-#include <ctime>
 #include <iomanip>
 #include <omp.h>
 
@@ -16,16 +15,14 @@ static double PI = acos(-1);
 // === Iterative FFT with bit-reversal and butterfly in a single parallel region ===
 void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
     size_t n = a.size();
-    // compute log2(n)
     int logn = 0;
     while ((size_t(1) << logn) < n) ++logn;
 
-    // Set the global number of threads
     omp_set_num_threads(n_threads);
 
     #pragma omp parallel
     {
-        // 1) Bit-reversal phase (parallelized)
+        // Bit-reversal phase
         #pragma omp for schedule(static)
         for (size_t i = 0; i < n; ++i) {
             size_t rev = 0;
@@ -34,13 +31,10 @@ void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
                 rev = (rev << 1) | (x & 1);
                 x >>= 1;
             }
-            if (i < rev) {
-                swap(a[i], a[rev]);
-            }
+            if (i < rev) swap(a[i], a[rev]);
         }
-        // Implicit barrier: all threads finish bit-reversal
 
-        // 2) FFT levels loop (butterflies)
+        // FFT levels loop (butterflies)
         for (size_t len = 2; len <= n; len <<= 1) {
             double ang = -2 * PI / len;
             complex<double> wlen(cos(ang), sin(ang));
@@ -63,19 +57,18 @@ void fft_iterative_merged(vector<complex<double>>& a, int n_threads) {
 // === MAIN ===
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
+        cerr << "Usage: " << argv[0] << " <num_threads> <input_file> [num_runs]\n";
         return 1;
     }
 
     int n_threads = stoi(argv[1]);
     const char* filename = argv[2];
+    int num_runs = (argc >= 4) ? stoi(argv[3]) : 1;
+
+    cout << fixed << setprecision(4);
 
     // === Reading Phase ===
-    auto start_read_sys = chrono::system_clock::now();
-    time_t start_read_c = chrono::system_clock::to_time_t(start_read_sys);
-    cout << "Start Reading: "
-         << put_time(localtime(&start_read_c), "%Y-%m-%d %H:%M:%S")
-         << '\n';
+    auto start_read = chrono::high_resolution_clock::now();
 
     ifstream ifs(filename);
     if (!ifs) {
@@ -85,9 +78,7 @@ int main(int argc, char* argv[]) {
 
     vector<complex<double>> data;
     double real, imag;
-    while (ifs >> real >> imag) {
-        data.emplace_back(real, imag);
-    }
+    while (ifs >> real >> imag) data.emplace_back(real, imag);
     ifs.close();
 
     if (data.empty()) {
@@ -101,37 +92,25 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    auto end_read_sys = chrono::system_clock::now();
-    time_t end_read_c = chrono::system_clock::to_time_t(end_read_sys);
-    cout << "End Reading:    "
-         << put_time(localtime(&end_read_c), "%Y-%m-%d %H:%M:%S")
-         << '\n';
+    auto end_read = chrono::high_resolution_clock::now();
+    auto duration_read = chrono::duration_cast<chrono::milliseconds>(end_read - start_read);
+    cout << "[RESULTS] ReadingTime: " << duration_read.count() << "ms" << endl;
 
-    auto duration_read = chrono::duration_cast<chrono::milliseconds>(end_read_sys - start_read_sys);
-    cout << "Reading Time:   " << duration_read.count() << " ms\n";
+    // === Algorithm Executions ===
+    for (int r = 0; r < num_runs; ++r) {
+        vector<complex<double>> temp_data = data; // copia per evitare modifiche successive
+        auto start_exec = chrono::high_resolution_clock::now();
+        fft_iterative_merged(temp_data, n_threads);
+        auto end_exec = chrono::high_resolution_clock::now();
 
-    // === FFT Processing Phase ===
-    auto start_fft_sys = chrono::system_clock::now();
-    time_t start_fft_c = chrono::system_clock::to_time_t(start_fft_sys);
-    cout << "Start FFT:      "
-        << put_time(localtime(&start_fft_c), "%Y-%m-%d %H:%M:%S")
-        << '\n'
-        << "Number of threads: " << n_threads << '\n';
+        auto duration_exec = chrono::duration_cast<chrono::milliseconds>(end_exec - start_exec);
 
-    fft_iterative_merged(data, n_threads);
-
-    auto end_fft_sys = chrono::system_clock::now();
-    time_t end_fft_c = chrono::system_clock::to_time_t(end_fft_sys);
-    cout << "End FFT:        "
-        << put_time(localtime(&end_fft_c), "%Y-%m-%d %H:%M:%S")
-        << '\n';
-
-    auto duration_fft = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_fft_sys);
-    cout << "FFT Time:       " << duration_fft.count() << " ms\n";
-
-    // === Total Time ===
-    auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_fft_sys - start_read_sys);
-    cout << "Total Time:     " << duration_total.count() << " ms\n";
+        cout << "[RESULTS] ExecutionTime(run=" << (r+1) << "): " << duration_exec.count() << "ms" << endl;
+    }
+    
+    auto end_all = chrono::high_resolution_clock::now();
+    auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_all - start_read);
+    cout << "[RESULTS] TotalTime: " << duration_total.count() << "ms" << endl;
 
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cuda_runtime.h>
 #include <cuComplex.h>
+#include <chrono>
 
 // Macro for robust CUDA error checking
 #define CHECK_CUDA_ERROR(err) \
@@ -15,167 +16,139 @@
         exit(EXIT_FAILURE); \
     }
 
-// OPTIMIZATION: Declare PI in the GPU's constant memory.
-// This memory is cached and optimized for read-only access by all threads.
+// Constant PI in GPU memory
 __constant__ double d_PI;
 
-/**
- * @brief CUDA kernel for DFT computation.
- * Each thread calculates a single element of the output vector.
- * The complexity is O(N^2), distributed among the GPU threads.
- * @param input Pointer to the input vector (complex numbers) on GPU memory.
- * @param output Pointer to the output vector (complex numbers) on GPU memory.
- * @param n Size of the input and output vectors.
- */
+// ==================== CUDA DFT Kernel ====================
 __global__ void dft_kernel(const cuDoubleComplex* input, cuDoubleComplex* output, int n) {
-    // Calculate the global thread index
     int k = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Each thread performs the calculation only if its index is within the range of N
     if (k < n) {
         cuDoubleComplex sum = make_cuDoubleComplex(0.0, 0.0);
-
-        // Calculate the k-th element of the DFT: X[k] = sum_{t=0}^{n-1} x[t] * exp(-j*2*pi*k*t/n)
         for (int t = 0; t < n; ++t) {
-            // Use the constant PI from the GPU's constant memory
             double angle = -2.0 * d_PI * k * t / n;
-            // Calculate the "twiddle factor" W_n^kt = exp(-j*2*pi*k*t/n)
             cuDoubleComplex W = make_cuDoubleComplex(cos(angle), sin(angle));
-            // Multiply input[t] by the twiddle factor
-            cuDoubleComplex term = cuCmul(input[t], W);
-            // Add the result to the sum
-            sum = cuCadd(sum, term);
+            sum = cuCadd(sum, cuCmul(input[t], W));
         }
         output[k] = sum;
     }
 }
 
-/**
- * @brief Host (CPU) wrapper function to execute the DFT on the GPU.
- * It handles memory allocation, data transfers, and the kernel launch.
- * It also measures and prints the execution times.
- * @param input Input vector (std::vector of std::complex).
- * @return A vector containing the DFT result.
- */
-std::vector<std::complex<double>> dft_gpu(const std::vector<std::complex<double>>& input) {
-    // CUDA events for high-precision performance measurement
+// ==================== Host GPU DFT Wrapper ====================
+std::vector<std::complex<double>> dft_gpu(
+    const std::vector<std::complex<double>>& input,
+    int threadsPerBlock,      // numero di thread per block
+    float& totalExecTime,     // totale (alloc+transfers+kernel+dealloc)
+    float& kernelTime,        // solo kernel
+    float& h2dTime,           // Host->Device
+    float& d2hTime            // Device->Host
+) {
+    int n = input.size();
+    size_t buffer_size = n * sizeof(cuDoubleComplex);
+
     cudaEvent_t start_total, stop_total, start_kernel, stop_kernel;
+    cudaEvent_t start_h2d, stop_h2d, start_d2h, stop_d2h;
+
     CHECK_CUDA_ERROR(cudaEventCreate(&start_total));
     CHECK_CUDA_ERROR(cudaEventCreate(&stop_total));
     CHECK_CUDA_ERROR(cudaEventCreate(&start_kernel));
     CHECK_CUDA_ERROR(cudaEventCreate(&stop_kernel));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_h2d));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop_h2d));
+    CHECK_CUDA_ERROR(cudaEventCreate(&start_d2h));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop_d2h));
 
-    // --- Start Total Timing ---
     CHECK_CUDA_ERROR(cudaEventRecord(start_total));
 
-    // Initialize PI on the host and copy it to the GPU's constant memory
     const double h_PI = acos(-1.0);
     CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(double)));
 
-    int n = input.size();
-    size_t buffer_size = n * sizeof(cuDoubleComplex);
-
-    // 1. Allocate memory on the GPU
     cuDoubleComplex* d_input;
     cuDoubleComplex* d_output;
     CHECK_CUDA_ERROR(cudaMalloc((void**)&d_input, buffer_size));
     CHECK_CUDA_ERROR(cudaMalloc((void**)&d_output, buffer_size));
 
-    // Convert from std::complex (host) to cuDoubleComplex (for CUDA)
     std::vector<cuDoubleComplex> h_input(n);
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; ++i)
         h_input[i] = make_cuDoubleComplex(input[i].real(), input[i].imag());
-    }
 
-    // 2. Copy data from Host (CPU) to Device (GPU)
+    CHECK_CUDA_ERROR(cudaEventRecord(start_h2d));
     CHECK_CUDA_ERROR(cudaMemcpy(d_input, h_input.data(), buffer_size, cudaMemcpyHostToDevice));
+    CHECK_CUDA_ERROR(cudaEventRecord(stop_h2d));
 
-    // --- Start Kernel Timing ---
     CHECK_CUDA_ERROR(cudaEventRecord(start_kernel));
-
-    // 3. Execute the Kernel on the GPU
-    int threadsPerBlock = 256; // A common and usually efficient value
-    int blocksPerGrid = (n + threadsPerBlock - 1) / threadsPerBlock; // Calculated to cover all N elements
+    int blocksPerGrid = (n + threadsPerBlock - 1) / threadsPerBlock;
     dft_kernel<<<blocksPerGrid, threadsPerBlock>>>(d_input, d_output, n);
-    
-    // Check for any errors launched by the kernel
     CHECK_CUDA_ERROR(cudaGetLastError());
-
-    // --- End Kernel Timing ---
     CHECK_CUDA_ERROR(cudaEventRecord(stop_kernel));
 
-    // Host vector to receive the results
     std::vector<cuDoubleComplex> h_output(n);
-
-    // 4. Copy results from Device (GPU) to Host (CPU)
+    CHECK_CUDA_ERROR(cudaEventRecord(start_d2h));
     CHECK_CUDA_ERROR(cudaMemcpy(h_output.data(), d_output, buffer_size, cudaMemcpyDeviceToHost));
+    CHECK_CUDA_ERROR(cudaEventRecord(stop_d2h));
 
-    // Convert the result from cuDoubleComplex to std::complex
-    std::vector<std::complex<double>> output(n);
-    for (int i = 0; i < n; i++) {
-        output[i] = { cuCreal(h_output[i]), cuCimag(h_output[i]) };
-    }
-
-    // --- End Total Timing ---
     CHECK_CUDA_ERROR(cudaEventRecord(stop_total));
-    
-    // Synchronize to ensure all events are completed before reading the timers
     CHECK_CUDA_ERROR(cudaEventSynchronize(stop_total));
 
-    // Calculate and print timings
-    float ms_kernel = 0, ms_total = 0;
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms_kernel, start_kernel, stop_kernel));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&ms_total, start_total, stop_total));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&h2dTime, start_h2d, stop_h2d));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, start_kernel, stop_kernel));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, start_d2h, stop_d2h));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&totalExecTime, start_total, stop_total));
 
-    std::cout << "Input size N: " << n << std::endl;
-    std::cout << "GPU kernel execution time (ms): " << ms_kernel << std::endl;
-    std::cout << "Total time (Transfers + Kernel) (ms): " << ms_total << std::endl;
+    std::vector<std::complex<double>> output(n);
+    for (int i = 0; i < n; ++i)
+        output[i] = { cuCreal(h_output[i]), cuCimag(h_output[i]) };
 
-    // 5. Cleanup memory and events
     CHECK_CUDA_ERROR(cudaFree(d_input));
     CHECK_CUDA_ERROR(cudaFree(d_output));
-    CHECK_CUDA_ERROR(cudaEventDestroy(start_total));
-    CHECK_CUDA_ERROR(cudaEventDestroy(stop_total));
-    CHECK_CUDA_ERROR(cudaEventDestroy(start_kernel));
-    CHECK_CUDA_ERROR(cudaEventDestroy(stop_kernel));
+    cudaEventDestroy(start_total); cudaEventDestroy(stop_total);
+    cudaEventDestroy(start_kernel); cudaEventDestroy(stop_kernel);
+    cudaEventDestroy(start_h2d); cudaEventDestroy(stop_h2d);
+    cudaEventDestroy(start_d2h); cudaEventDestroy(stop_d2h);
 
     return output;
 }
 
+// ==================== MAIN ====================
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <input_file>\n";
-        std::cerr << "The input file must contain pairs of numbers (real and imaginary parts) separated by spaces, one per line.\n";
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] << " <threads_per_block> <input_file> [num_runs]\n";
         return 1;
     }
 
-    const char* filename = argv[1];
+    int threadsPerBlock = std::max(1, std::stoi(argv[1]));
+    const char* filename = argv[2];
+    int num_runs = 1;
+    if (argc >= 4) num_runs = std::max(1, std::stoi(argv[3]));
+
+    // Read input file
+    auto start_read = std::chrono::high_resolution_clock::now();
     std::ifstream ifs(filename);
-    if (!ifs) {
-        std::cerr << "Error: could not open file " << filename << "\n";
-        return 1;
-    }
+    if (!ifs) { std::cerr << "Error opening file " << filename << "\n"; return 1; }
 
     std::vector<std::complex<double>> data;
     double real, imag;
-    while (ifs >> real >> imag) {
-        data.emplace_back(real, imag);
-    }
+    while (ifs >> real >> imag) data.emplace_back(real, imag);
     ifs.close();
 
-    if (data.empty()) {
-        std::cerr << "Error: no data read from file " << filename << "\n";
-        return 1;
+    if (data.empty()) { std::cerr << "No data read from file\n"; return 1; }
+    auto end_read = std::chrono::high_resolution_clock::now();
+    float read_ms = std::chrono::duration<float, std::milli>(end_read - start_read).count();
+    std::cout << "[RESULTS] ReadingTime: " << read_ms << "ms\n";
+
+    float total_exec_ms = 0.0f;
+    for (int run = 1; run <= num_runs; ++run) {
+        float execTime = 0, kernelTime = 0, h2dTime = 0, d2hTime = 0;
+        auto result = dft_gpu(data, threadsPerBlock, execTime, kernelTime, h2dTime, d2hTime);
+
+        std::cout << "[RESULTS] ExecutionTime(run=" << run << "): " << execTime << "ms\n";
+        std::cout << "  (Details) Host -> Device: " << h2dTime << "ms\n";
+        std::cout << "  (Details) Kernel: " << kernelTime << "ms\n";
+        std::cout << "  (Details) Device -> Host: " << d2hTime << "ms\n";
+        total_exec_ms += execTime;
     }
 
-    // Execute the DFT on the GPU
-    auto result = dft_gpu(data);
-
-    // (Optional) Print the first few results for verification
-    // std::cout << "\nFirst 5 results:\n";
-    // for (int i = 0; i < std::min(5, (int)result.size()); ++i) {
-    //     std::cout << "Result[" << i << "] = " << result[i].real() << " + " << result[i].imag() << "i\n";
-    // }
+    float totalTime = read_ms + total_exec_ms;
+    std::cout << "[RESULTS] TotalTime: " << totalTime << "ms\n";
 
     return 0;
 }

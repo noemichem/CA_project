@@ -2,10 +2,8 @@
 #include <fstream>
 #include <vector>
 #include <complex>
-#include <cstdint>
 #include <cmath>
 #include <chrono>
-#include <ctime>
 #include <iomanip>
 #include <omp.h>
 
@@ -17,9 +15,9 @@ const double PI = acos(-1);
 vector<complex<double>> dft_parallel(const vector<complex<double>>& input, int n_threads) {
     int n = static_cast<int>(input.size());
     vector<complex<double>> output(n, {0.0, 0.0});
-    
+
     omp_set_num_threads(n_threads);
-    
+
     #pragma omp parallel for schedule(dynamic)
     for (int k = 0; k < n; ++k) {
         for (int t = 0; t < n; ++t) {
@@ -30,22 +28,20 @@ vector<complex<double>> dft_parallel(const vector<complex<double>>& input, int n
     return output;
 }
 
-// === MAIN ===
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        cerr << "Usage: " << argv[0] << " <num_threads> <input_file>\n";
+        cerr << "Usage: " << argv[0] << " <num_threads> <input_file> [num_runs]\n";
         return 1;
     }
 
     int n_threads = stoi(argv[1]);
     const char* filename = argv[2];
+    int num_runs = (argc >= 4) ? stoi(argv[3]) : 1;
+
+    cout << fixed << setprecision(4);
 
     // === Reading Phase ===
-    auto start_read_sys = chrono::system_clock::now();
-    time_t start_read_c = chrono::system_clock::to_time_t(start_read_sys);
-    cout << "Start Reading: "
-         << put_time(localtime(&start_read_c), "%Y-%m-%d %H:%M:%S")
-         << '\n';
+    auto start_read = chrono::high_resolution_clock::now();
 
     ifstream ifs(filename);
     if (!ifs) {
@@ -55,47 +51,32 @@ int main(int argc, char* argv[]) {
 
     vector<complex<double>> data;
     double real, imag;
-    while (ifs >> real >> imag) {
-        data.emplace_back(real, imag);
-    }
+    while (ifs >> real >> imag) data.emplace_back(real, imag);
     ifs.close();
 
     if (data.empty()) {
-        cerr << "No data read from file: " << filename << "\n";
+        cerr << "No data read from file.\n";
         return 1;
     }
 
-    auto end_read_sys = chrono::system_clock::now();
-    time_t end_read_c = chrono::system_clock::to_time_t(end_read_sys);
-    cout << "End Reading:    "
-         << put_time(localtime(&end_read_c), "%Y-%m-%d %H:%M:%S")
-         << '\n';
+    auto end_read = chrono::high_resolution_clock::now();
+    auto duration_read = chrono::duration_cast<chrono::milliseconds>(end_read - start_read);
+    cout << "[RESULTS] ReadingTime: " << duration_read.count() << "ms" << endl;
 
-    auto duration_read = chrono::duration_cast<chrono::milliseconds>(end_read_sys - start_read_sys);
-    cout << "Reading Time:   " << duration_read.count() << " ms\n";
+    // === Algorithm Executions ===
+    for (int r = 0; r < num_runs; ++r) {
+        auto start_exec = chrono::high_resolution_clock::now();
+        auto result = dft_parallel(data, n_threads);
+        auto end_exec = chrono::high_resolution_clock::now();
 
-    // === DFT Processing Phase ===
-    auto start_dft_sys = chrono::system_clock::now();
-    time_t start_dft_c = chrono::system_clock::to_time_t(start_dft_sys);
-    cout << "Start DFT:      "
-         << put_time(localtime(&start_dft_c), "%Y-%m-%d %H:%M:%S")
-         << '\n'
-         << "Number of threads: " << n_threads << '\n';
+        auto duration_exec = chrono::duration_cast<chrono::milliseconds>(end_exec - start_exec);
 
-    auto result = dft_parallel(data, n_threads);
+        cout << "[RESULTS] ExecutionTime(run=" << (r+1) << "): " << duration_exec.count() << "ms" << endl;
+    }
 
-    auto end_dft_sys = chrono::system_clock::now();
-    time_t end_dft_c = chrono::system_clock::to_time_t(end_dft_sys);
-    cout << "End DFT:        "
-         << put_time(localtime(&end_dft_c), "%Y-%m-%d %H:%M:%S")
-         << '\n';
-
-    auto duration_dft = chrono::duration_cast<chrono::milliseconds>(end_dft_sys - start_dft_sys);
-    cout << "DFT Time:       " << duration_dft.count() << " ms\n";
-
-    // === Total Time ===
-    auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_dft_sys - start_read_sys);
-    cout << "Total Time:     " << duration_total.count() << " ms\n";
+    auto end_all = chrono::high_resolution_clock::now();
+    auto duration_total = chrono::duration_cast<chrono::milliseconds>(end_all - start_read);
+    cout << "[RESULTS] TotalTime: " << duration_total.count() << "ms" << endl;
 
     return 0;
 }
