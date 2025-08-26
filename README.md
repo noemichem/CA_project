@@ -40,28 +40,36 @@ python data/scripts/generate_pow2_complex.py 10
 **CPU Compilation:**
 
 ```powershell
-cd scripts/cpu_version
-.\OMP_compile.ps1
-cd ../..  # Return to root folder
+scripts\cpu_version\OMP_compile.ps1
 ```
 
 **GPU Compilation:**
 
 ```powershell
-cd scripts/gpu_version
-.\CUDA_compile.ps1
-cd ../..  # Return to root folder
+scripts\gpu_version\CUDA_compile.ps1
 ```
 
 **Single Run:**
 
 ```bash
 # CPU
-python scripts/run_cpp.py OMP_DFT_optimized.exe 8 data/numbers_1024.txt 1
+python scripts/run_cpp.py <relative_path_to_executable_cpu> <num_threads> <input_file> <num_runs>
 
 # GPU
-python scripts/run_cpp.py CUDA_fft.exe 256 data/numbers_1048576.txt 1 --cuda
+python scripts/run_cpp.py <relative_path_to_executable_gpu> <threads_per_block> <input_file> <num_runs> --cuda
 ```
+
+**Generic usage examples:**
+
+```bash
+# CPU
+python scripts/run_cpp.py scripts/cpu_version/build/OMP_DFT_optimized.exe 8 data/numbers_1024.txt 1
+
+# GPU
+python scripts/run_cpp.py scripts/gpu_version/build/CUDA_fft.exe 256 data/numbers_1048576.txt 1 --cuda
+```
+
+* `<relative_path_to_executable_cpu>` and `<relative_path_to_executable_gpu>`: relative path from the **project root** to the executable you want to run.
 
 **Hydra-based Multirun:**
 
