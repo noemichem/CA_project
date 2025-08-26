@@ -6,6 +6,11 @@ A complete framework for benchmarking **Discrete Fourier Transform (DFT) and Fas
 
 ## Quick Start (3 Steps)
 
+### ⚠️ Important Note
+
+All scripts **must be executed from the root folder of the project**.
+Even if it might technically work from other directories, the project has been tested only when run from the root folder.
+
 ### 1️⃣ Clone & Setup
 
 ```bash
@@ -14,23 +19,12 @@ cd <project_root>
 pip install pandas matplotlib hydra-core omegaconf
 ```
 
-* Python 3.8+ recommended (3.11 tested)
-* Windows + Visual Studio 2022 for C++/CUDA
-* NVIDIA GPU + CUDA Toolkit 12+ for GPU executables
-
----
-
 ### 2️⃣ Generate Data
 
 ```bash
-python data/scripts/generate_complex.py --size 1024 --output data/numbers_1024.txt
-python data/scripts/generate_pow2_complex.py --size 10 --output data/numbers_1024.txt
+python data/scripts/generate_complex.py 1024
+python data/scripts/generate_pow2_complex.py 10
 ```
-
-* `generate_complex.py`: generate N complex numbers
-* `generate_pow2_complex.py`: generate 2^N complex numbers (required for FFT)
-
----
 
 ### 3️⃣ Compile & Run
 
@@ -39,6 +33,7 @@ python data/scripts/generate_pow2_complex.py --size 10 --output data/numbers_102
 ```powershell
 cd scripts/cpu_version
 .\OMP_compile.ps1
+cd ../..  # Return to root folder
 ```
 
 **GPU Compilation:**
@@ -46,6 +41,7 @@ cd scripts/cpu_version
 ```powershell
 cd scripts/gpu_version
 .\CUDA_compile.ps1
+cd ../..  # Return to root folder
 ```
 
 **Single Run:**
@@ -63,6 +59,8 @@ python scripts/run_cpp.py CUDA_fft.exe 256 data/numbers_1048576.txt 1 --cuda
 ```bash
 python scripts/run_cpp_hydra.py -m
 ```
+
+> Always execute these commands **from the project root** to ensure correct file paths and log saving.
 
 ---
 
