@@ -7,3 +7,7 @@ Num Execution,Threads per Block,Input File,Run,Execution Time (ms),Executable
 2,256,numbers_1048576.txt,2,29.5534,CUDA_fft.exe
 2,256,numbers_1048576.txt,3,26.2487,CUDA_fft.exe
 2,256,numbers_1048576.txt,4,25.2192,CUDA_fft.exe
+3,256,numbers_1048576.txt,1,27.6871,CUDA_fft.exe
+3,256,numbers_1048576.txt,2,28.4188,CUDA_fft.exe
+3,256,numbers_1048576.txt,3,25.677,CUDA_fft.exe
+3,256,numbers_1048576.txt,4,24.6692,CUDA_fft.exe
