@@ -1,0 +1,19 @@
+cpp_program:
+  executable_path: 'scripts/gpu_version/CUDA_fft.exe'
+
+settings:
+  num_threads: 4           # Valore predefinito
+  input_file: 'data/numbers_1024.txt'  # File di input predefinito
+  runs: 5                 # Numero di esecuzioni per media
+
+output:
+  dettagli_csv: "results/tables/GPU_dettagli.csv"
+  media_csv: "resultes/tables/GPU_medie.csv"
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweeper:
+    params:
+      settings.input_file: data/numbers_134217728.txt
+      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
