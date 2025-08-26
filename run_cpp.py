@@ -8,13 +8,29 @@ CPU_CSV = "results/tables/CPU_details.csv"
 GPU_CSV = "results/tables/GPU_details.csv"
 
 def run_executable(executable, num_threads, input_file, num_runs=1, is_cuda=False):
-    # Costruisci il comando
     cmd = [executable, str(num_threads), input_file, str(num_runs)]
-    
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    print(f"Eseguendo: {' '.join(cmd)}")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except Exception as e:
+        print("Errore durante l'esecuzione:", e)
+        return None
+
+    # Stampa output
+    if result.stdout:
+        for line in result.stdout.splitlines():
+            print("[C++ STDOUT]", line)
+    if result.stderr:
+        print("[C++ STDERR]", result.stderr.strip())
 
     if result.returncode != 0:
-        print("Errore eseguendo il programma:", result.stderr)
+        print(f"Programma terminato con codice {result.returncode}")
         return None
 
     # Parsing output
@@ -23,22 +39,22 @@ def run_executable(executable, num_threads, input_file, num_runs=1, is_cuda=Fals
 
     for line in output:
         if line.startswith("[RESULTS] ReadingTime:"):
-            m = re.search(r"(\d+)ms", line)
+            m = re.search(r"([\d.]+)ms", line)
             if m:
-                times["ReadingTime"] = int(m.group(1))
+                times["ReadingTime"] = float(m.group(1))
 
         elif line.startswith("[RESULTS] ExecutionTime"):
             m_run = re.search(r"run=(\d+)", line)
-            m_val = re.search(r"(\d+)ms", line)
+            m_val = re.search(r"([\d.]+)ms", line)
             if m_run and m_val:
                 run_id = int(m_run.group(1))
-                val = int(m_val.group(1))
+                val = float(m_val.group(1))
                 times["ExecutionTimes"].append((run_id, val))
 
         elif line.startswith("[RESULTS] TotalTime:"):
-            m = re.search(r"(\d+)ms", line)
+            m = re.search(r"([\d.]+)ms", line)
             if m:
-                times["TotalTime"] = int(m.group(1))
+                times["TotalTime"] = float(m.group(1))
 
     return times
 
