@@ -111,6 +111,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    times = run_executable(args.executable, args.num_threads, args.input_file, args.num_runs, is_cuda=args.cuda)
+    times = run_executable(args.executable, args.num_threads, args.input_file, args.num_runs)
     if times:
         save_to_csv(times, args.executable, args.num_threads, args.input_file, is_cuda=args.cuda)
