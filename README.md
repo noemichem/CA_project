@@ -1,6 +1,9 @@
-# CPU & GPU DFT/FFT Benchmarking ![Python](https://img.shields.io/badge/python-3.8%2B-blue) ![C++](https://img.shields.io/badge/C%2B%2B-17-brightgreen) ![MIT License](https://img.shields.io/badge/license-MIT-lightgrey)
+# CPU & GPU DFT/FFT Benchmarking and Performance Analysis ![Python](https://img.shields.io/badge/python-3.8%2B-blue) ![C++](https://img.shields.io/badge/C%2B%2B-17-brightgreen) ![MIT License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-A complete framework for benchmarking **Discrete Fourier Transform (DFT) and Fast Fourier Transform (FFT)** on CPU and GPU. Compare performance, scalability, and speedup of different implementations with single runs or multiruns using Hydra.
+A comprehensive repository showcasing **different CPU and GPU implementations of Discrete Fourier Transform (DFT) and Fast Fourier Transform (FFT)**.
+It is designed for **performance analysis and algorithm optimization** using profiling tools such as **Intel VTune** for CPU and **NVIDIA Nsight** for GPU. Compare scalability, execution time, and speedup of multiple implementations using single runs or Hydra-powered multiruns.
+
+This repository was developed as a **Computer Architecture exam project at the University of Pisa**.
 
 ---
 
@@ -9,8 +12,8 @@ A complete framework for benchmarking **Discrete Fourier Transform (DFT) and Fas
 ### Hardware
 
 * **CPU**: Multi-core processor with OpenMP support  
-  - Recommended: 4+ cores (Intel/AMD)  
-* **GPU**: NVIDIA GPU with CUDA support  
+  - Recommended: 4+ cores (Intel recommended for performance analysis with Intel VTune)  
+* **GPU**: NVIDIA GPU with CUDA support (required for compiling GPU implementations and for testing)
   - Minimum: Compute Capability 6.0 (Pascal, required by CUDA Toolkit 12)  
   - Tested on **GeForce RTX 3050 Mobile**, Compute Capability 8.6, 4 GB VRAM  
   - Higher VRAM may be required for GPU execution on large files  
@@ -24,11 +27,13 @@ A complete framework for benchmarking **Discrete Fourier Transform (DFT) and Fas
 
 ### Software
 
-* **Python 3.8+** (recommended 3.11)
-* **C++ compiler** with OpenMP support (e.g., MSVC, GCC via MSYS2, or Clang)
-* **CUDA Toolkit 12+**
-* **NVIDIA GPU** for CUDA executables
-* **Windows PowerShell** for compilation scripts
+* **Python 3.8+** (recommended 3.11)  
+* **C++ compiler** with OpenMP support (e.g., MSVC, GCC via MSYS2, or Clang)  
+* **CUDA Toolkit 12+**  
+* **NVIDIA GPU** for CUDA executables  
+* **Windows PowerShell** for compilation scripts  
+* **Intel VTune** for CPU profiling  
+* **NVIDIA Nsight** for GPU profiling
 
 ### Python Libraries
 
