@@ -18,13 +18,22 @@ git clone <repo_url>
 cd <project_root>
 pip install pandas matplotlib hydra-core omegaconf
 ```
-
+* Python 3.8+ recommended (3.11 tested)
+* Windows + Visual Studio 2022 for C++/CUDA
+* NVIDIA GPU + CUDA Toolkit 12+ for GPU executables
 ### 2️⃣ Generate Data
+
+---
 
 ```bash
 python data/scripts/generate_complex.py 1024
 python data/scripts/generate_pow2_complex.py 10
 ```
+
+* `generate_complex.py`: generate N complex numbers
+* `generate_pow2_complex.py`: generate 2^N complex numbers (required for FFT)
+
+---
 
 ### 3️⃣ Compile & Run
 
