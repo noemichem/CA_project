@@ -1,19 +1,22 @@
 cpp_program:
-  executable_path: 'scripts/cpu_version/OMP_FFT.exe'
+  executable_path: scripts/gpu_version/build/CUDA_fft.exe
 
 settings:
-  num_threads: 256
-  input_file: 'data/numbers_1024.txt'
-  device: cpu
-  for_limit: 5 
-
+  num_threads: 64
+  input_file: data/numbers_1024.txt
+  device: cuda
+  num_run: 10
 
 hydra:
   run:
-    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: logs/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: logs/multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
   sweeper:
     params:
-      settings.input_file: data/numbers_134217728.txt
-      settings.num_threads: 256
+      cpp_program.executable_path: scripts/gpu_version/build/CUDA_cuFFT.exe, scripts/gpu_version/build/CUDA_fft.exe, scripts/gpu_version/build/CUDA_FFT_NOE.exe
+      settings.input_file: data/numbers_1024.txt, data/numbers_16384.txt, data/numbers_131072.txt, data/numbers_262144.txt data/numbers_1048576.txt, data/numbers_134217728.txt
+      settings.num_threads: 32, 64, 128, 256
       settings.device: cuda
-      settings.for_limit: 10
+      settings.num_run: 10

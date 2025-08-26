@@ -168,10 +168,6 @@ int main(int argc, char* argv[]) {
     if (data.empty()) { std::cerr << "No data read\n"; return 1; }
     if ((data.size() & (data.size()-1)) != 0) { std::cerr << "Input size must be power of 2\n"; return 1; }
 
-    if (data.size() > 65536) {
-        std::cerr << "[WARNING] Input size > 65536, naive GPU FFT may be very slow!\n";
-    }
-
     // --- Multiple runs ---
     float total_exec_ms = 0.0f;
     for (int run = 1; run <= num_runs; ++run) {

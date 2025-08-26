@@ -4,7 +4,6 @@
 #include <complex>
 #include <cmath>
 #include <chrono>
-#include <ctime>
 #include <iomanip>
 #include <omp.h>
 

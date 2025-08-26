@@ -34,6 +34,10 @@
 # IDE specific files
 *.vscode
 *.idea
+*.vs
+
+# Virtual environment
+.venv
 
 #.exe files
 *.out
@@ -47,10 +51,6 @@
 #.zip compressed files
 *.zip
 
-# data and output folders
-multirun
-outputs
+# logs and data
+logs
 data/*.txt
-FFT_2°iter.csv
-
-.vs
