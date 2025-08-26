@@ -222,6 +222,16 @@ python scripts/run_cpp_hydra.py -m
 
 ---
 
+## Contributors
+
+This project was developed in collaboration between:
+
+- **[Noemi Cherchi](https://github.com/noemichem)** – repository owner  
+- **[Flavio Messina](https://github.com/f-messina)**  
+- **[Alessandro Ciarniello](https://github.com/a-ciarniello)**
+
+---
+
 ## License
 
 This project is licensed under the **MIT License** – see [LICENSE](LICENSE) for details.
