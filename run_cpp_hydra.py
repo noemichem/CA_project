@@ -4,7 +4,11 @@ import os
 import logging
 import time
 import hydra
+import re
 from omegaconf import DictConfig
+
+CPU_CSV = "results/tables/CPU_details.csv"
+GPU_CSV = "results/tables/GPU_details.csv"
 
 # ---------------------------
 # Logging configuration
@@ -37,63 +41,99 @@ log.addHandler(file_handler)
 # ---------------------------
 # Function to run C++ program
 # ---------------------------
-def run_cpp_program(executable_path: str, num_threads: int, input_file: str) -> float:
-    """
-    Runs the C++ executable with the specified number of threads and input file.
-    Measures and returns execution time in milliseconds.
-    """
-    command = [executable_path, str(num_threads), input_file]
+def run_executable(executable, num_threads, input_file, num_runs):
+
+    cmd = [executable, str(num_threads), input_file, str(num_runs)]
+    print(f"Eseguendo: {' '.join(cmd)}")
 
     try:
-        start_ns = time.perf_counter_ns()
-        result = subprocess.run(command, capture_output=True, text=True, check=True, encoding='utf-8', timeout=None)
-        end_ns = time.perf_counter_ns()
-        execution_time = (end_ns - start_ns) / 1_000_000  # convert to milliseconds
-        log.info(f"Execution time: {execution_time:.4f} ms")
-        return execution_time
-
-    except subprocess.CalledProcessError as e:
-        log.error(f"Error executing command: {e}")
-        log.error(f"Return code: {e.returncode}")
-        log.error(f"Standard output: {e.stdout}")
-        log.error(f"Error output: {e.stderr}")
-    except FileNotFoundError:
-        log.error(f"Executable not found at '{executable_path}'")
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
     except Exception as e:
-        log.error(f"Unexpected error: {e}")
+        print("Errore durante l'esecuzione:", e)
+        return None
 
-    return None
+    # Stampa output
+    if result.stdout:
+        for line in result.stdout.splitlines():
+            print("[C++ STDOUT]", line)
+    if result.stderr:
+        print("[C++ STDERR]", result.stderr.strip())
+
+    if result.returncode != 0:
+        print(f"Programma terminato con codice {result.returncode}")
+        return None
+
+    # Parsing output
+    output = result.stdout.splitlines()
+    times = {"ReadingTime": None, "TotalTime": None, "ExecutionTimes": []}
+
+    for line in output:
+        if line.startswith("[RESULTS] ReadingTime:"):
+            m = re.search(r"([\d.]+)ms", line)
+            if m:
+                times["ReadingTime"] = float(m.group(1))
+
+        elif line.startswith("[RESULTS] ExecutionTime"):
+            m_run = re.search(r"run=(\d+)", line)
+            m_val = re.search(r"([\d.]+)ms", line)
+            if m_run and m_val:
+                run_id = int(m_run.group(1))
+                val = float(m_val.group(1))
+                times["ExecutionTimes"].append((run_id, val))
+
+        elif line.startswith("[RESULTS] TotalTime:"):
+            m = re.search(r"([\d.]+)ms", line)
+            if m:
+                times["TotalTime"] = float(m.group(1))
+
+    return times
+
 
 
 # ---------------------------
-# Function to save individual execution details to CSV
+# Function to save to CSV
 # ---------------------------
-def save_details_csv(csv_file: str, results: list[float], num_threads: int, input_file: str, executable: str):
-    """
-    Saves the execution times of each run to a CSV file.
-    """
-    file_exists = os.path.isfile(csv_file)
-    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        if not file_exists or os.path.getsize(csv_file) == 0:
-            writer.writerow(["Run Number", "Threads", "Input File", "Execution Time (ms)", "Executable"])
-        for i, exec_time in enumerate(results):
-            writer.writerow([i + 1, num_threads, input_file, f"{exec_time:.4f}", executable])
+def save_to_csv(times, executable, num_threads, input_file, num_runs, device):
+    os.makedirs("results/tables", exist_ok=True)
 
+    if device == "cuda":
+        is_cuda = True
+    
+    csv_path = GPU_CSV if is_cuda else CPU_CSV
+    exe_name = os.path.basename(executable)
+    file_name = os.path.basename(input_file)
 
-# ---------------------------
-# Function to save average execution time to CSV
-# ---------------------------
-def save_average_csv(csv_file: str, average: float, num_threads: int, input_file: str, executable: str):
-    """
-    Saves the average execution time to a CSV file.
-    """
-    file_exists = os.path.isfile(csv_file)
-    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        if not file_exists or os.path.getsize(csv_file) == 0:
-            writer.writerow(["Threads", "Input File", "Average Execution Time (ms)", "Executable"])
-        writer.writerow([num_threads, input_file, f"{average:.4f}", executable])
+    file_exists = os.path.isfile(csv_path)
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.writer(f)
+
+        # Header
+        if not file_exists:
+            if is_cuda:
+                header = ["Num Execution", "Threads per Block", "Input File", "Run", "Execution Time (ms)", "Executable"]
+            else:
+                header = ["Num Execution", "Num Threads", "Input File", "Run", "Execution Time (ms)", "Executable"]
+            writer.writerow(header)
+            num_exec = num_runs
+        else:
+            num_exec = num_runs
+
+        # Scrivi righe
+        for run_id, val in sorted(times["ExecutionTimes"]):
+            if is_cuda:
+                # Se l'eseguibile è cuFFT, Threads per Block = None
+                threads_value = None if "cuFFT" in exe_name else num_threads
+                row = [num_exec, threads_value, file_name, run_id, val, exe_name]
+            else:
+                row = [num_exec, num_threads, file_name, run_id, val, exe_name]
+            writer.writerow(row)
+
+    print(f"{len(times['ExecutionTimes'])} risultati salvati in {csv_path} (Num Execution = {num_exec})")
 
 
 # ---------------------------
@@ -109,28 +149,40 @@ def main(cfg: DictConfig) -> None:
     # Load configuration from Hydra
     executable = cfg.cpp_program.executable_path
     threads = cfg.settings.num_threads
+    device = cfg.settings.device
     input_file = cfg.settings.input_file
-    details_csv = cfg.output.details_csv
-    average_csv = cfg.output.average_csv
+    iteration = cfg.settings.for_limit
 
-    execution_times = []
-
+    
     log.info(f"Running command: {' '.join([executable, str(threads), input_file])}")
     log.info(f"Using {threads} threads with input file: {input_file}")
 
-    # Run the program multiple times (adjust range as needed)
-    for i in range(10):  # Run 10 times
-        log.info(f"Run {i + 1}/10")
-        exec_time = run_cpp_program(executable, threads, input_file)
-        if exec_time is not None:
-            execution_times.append(exec_time)
+    if device == "cuda":
+        csv_path = GPU_CSV
+        if not os.path.exists(csv_path):
+            num_runs = 1
+        else:
+            with open(csv_path, "r") as fr:
+                lines = list(csv.reader(fr))
+                if len(lines) > 1:
+                    last_num_exec = max(int(row[0]) for row in lines[1:])
+                    num_runs = last_num_exec + 1
+    else:
+        csv_path = CPU_CSV
+        if not os.path.exists(csv_path):
+            num_runs = 1
+        else:
+            with open(csv_path, "r") as fr:
+                lines = list(csv.reader(fr))
+                if len(lines) > 1:
+                    last_num_exec = max(int(row[0]) for row in lines[1:])
+                    num_runs = last_num_exec + 1
 
-    # Save results if at least one run succeeded
-    if execution_times:
-        average_time = sum(execution_times) / len(execution_times)
-        log.info(f"Average execution time: {average_time:.4f} ms")
-        save_details_csv(details_csv, execution_times, threads, input_file, executable)
-        save_average_csv(average_csv, average_time, threads, input_file, executable)
+    # Run the program multiple times (adjust range as needed)
+    for i in range(iteration):  # Run 'iteration' times
+        log.info(f"Run {i + 1}/{iteration}")
+        times = run_executable(executable, threads, input_file, num_runs)
+        save_to_csv(times, executable, threads, input_file, device)
     else:
         log.error("No successful executions.")
 

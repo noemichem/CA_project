@@ -7,7 +7,7 @@ import re
 CPU_CSV = "results/tables/CPU_details.csv"
 GPU_CSV = "results/tables/GPU_details.csv"
 
-def run_executable(executable, num_threads, input_file, num_runs=1, is_cuda=False):
+def run_executable(executable, num_threads, input_file, num_runs=1):
     cmd = [executable, str(num_threads), input_file, str(num_runs)]
     print(f"Eseguendo: {' '.join(cmd)}")
 

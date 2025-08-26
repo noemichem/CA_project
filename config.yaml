@@ -2,12 +2,11 @@ cpp_program:
   executable_path: 'scripts/cpu_version/OMP_FFT.exe'
 
 settings:
-  num_threads: 15           # Valore predefinito
-  input_file: 'data/numbers_1024.txt'  # File di input predefinito
+  num_threads: 256
+  input_file: 'data/numbers_1024.txt'
+  device: cpu
+  for_limit: 5 
 
-output:
-  dettagli_csv: "results/tables/dettagli.csv"
-  media_csv: "resultes/tables/medie.csv"
 
 hydra:
   run:
@@ -15,4 +14,6 @@ hydra:
   sweeper:
     params:
       settings.input_file: data/numbers_134217728.txt
-      settings.num_threads: 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+      settings.num_threads: 256
+      settings.device: cuda
+      settings.for_limit: 10
