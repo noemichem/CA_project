@@ -1,14 +1,12 @@
-// Miglioramento nella gestione del tempo: il tempo di plan non deve essere incluso nel tempo di esecuzione del kernel
+// miglioramenti: float 32, pinned memory, stream, batch FFT, da testare
 
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <complex>
 #include <cuda_runtime.h>
-#include <cuComplex.h>
 #include <cufft.h>
 #include <chrono>
-
 
 #define CHECK_CUDA_ERROR(err) \
     if (err != cudaSuccess) { \
@@ -24,62 +22,86 @@
         exit(EXIT_FAILURE); \
     }
 
-// --- Host function: FFT with cuFFT and detailed timing ---
-std::vector<std::complex<double>> fft_gpu_cufft(
-    const std::vector<std::complex<double>>& input,
-    float& h2dTime, float& kernelTime, float& d2hTime,
-    cufftHandle plan, cuDoubleComplex* d_data, cuDoubleComplex* h_buffer)
-{
-    int n = input.size();
-    size_t vector_size = n * sizeof(cuDoubleComplex);
+// --- Host function: FFT with cuFFT (optimized) ---
+std::vector<std::complex<float>> fft_gpu_cufft(
+        const std::vector<std::complex<float>>& input,
+        int batch, float& totalExecTime, float& kernelTime,
+        float& h2dTime, float& d2hTime) {
 
-    // Convert input to cuDoubleComplex
-    std::vector<cuDoubleComplex> h_input(n);
-    for (int i = 0; i < n; i++)
-        h_input[i] = make_cuDoubleComplex(input[i].real(), input[i].imag());
+    int n = input.size();  
+    size_t vector_size = n * batch * sizeof(cufftComplex);
 
-    // --- Host->Device
-    cudaEvent_t startH2D, stopH2D;
-    CHECK_CUDA_ERROR(cudaEventCreate(&startH2D));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stopH2D));
-    CHECK_CUDA_ERROR(cudaEventRecord(startH2D));
-    CHECK_CUDA_ERROR(cudaMemcpy(d_data, h_input.data(), vector_size, cudaMemcpyHostToDevice));
-    CHECK_CUDA_ERROR(cudaEventRecord(stopH2D));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stopH2D));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&h2dTime, startH2D, stopH2D));
+    // ⚡ 1. Allocazione Host in **Pinned Memory** (più veloce per trasferimenti H2D/D2H)
+    cufftComplex* h_input;
+    cufftComplex* h_output;
+    CHECK_CUDA_ERROR(cudaMallocHost(&h_input, vector_size));  // pinned
+    CHECK_CUDA_ERROR(cudaMallocHost(&h_output, vector_size));
 
-    // --- FFT kernel execution
-    cudaEvent_t startKernel, stopKernel;
-    CHECK_CUDA_ERROR(cudaEventCreate(&startKernel));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stopKernel));
-    CHECK_CUDA_ERROR(cudaEventRecord(startKernel));
+    // Riempimento dati batchati (replico lo stesso input per semplicità)
+    for (int b = 0; b < batch; b++) {
+        for (int i = 0; i < n; i++) {
+            int idx = b * n + i;
+            h_input[idx].x = input[i].real();
+            h_input[idx].y = input[i].imag();
+        }
+    }
 
-    CHECK_CUFFT_ERROR(cufftExecZ2Z(plan, d_data, d_data, CUFFT_FORWARD));
+    // ⚡ 2. Allocazione memoria Device
+    cufftComplex* d_data;
+    CHECK_CUDA_ERROR(cudaMalloc(&d_data, vector_size));
 
-    CHECK_CUDA_ERROR(cudaEventRecord(stopKernel));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stopKernel));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, startKernel, stopKernel));
+    // ⚡ 3. Creazione Stream per overlap
+    cudaStream_t stream;
+    CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
 
-    // --- Device->Host
-    std::vector<cuDoubleComplex> h_output(n);
-    cudaEvent_t startD2H, stopD2H;
-    CHECK_CUDA_ERROR(cudaEventCreate(&startD2H));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stopD2H));
-    CHECK_CUDA_ERROR(cudaEventRecord(startD2H));
-    CHECK_CUDA_ERROR(cudaMemcpy(h_output.data(), d_data, vector_size, cudaMemcpyDeviceToHost));
-    CHECK_CUDA_ERROR(cudaEventRecord(stopD2H));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stopD2H));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, startD2H, stopD2H));
+    // ⚡ 4. Creazione Piano cuFFT con **batch**
+    cufftHandle plan;
+    CHECK_CUFFT_ERROR(cufftPlan1d(&plan, n, CUFFT_C2C, batch));
+    CHECK_CUFFT_ERROR(cufftSetStream(plan, stream));  // lega il piano allo stream
 
-    // Convert to std::complex<double>
-    std::vector<std::complex<double>> output(n);
-    for (int i = 0; i < n; i++)
-        output[i] = { cuCreal(h_output[i]), cuCimag(h_output[i]) };
+    // Timing
+    cudaEvent_t startH2D, stopH2D, startKernel, stopKernel, startD2H, stopD2H;
+    cudaEventCreate(&startH2D); cudaEventCreate(&stopH2D);
+    cudaEventCreate(&startKernel); cudaEventCreate(&stopKernel);
+    cudaEventCreate(&startD2H); cudaEventCreate(&stopD2H);
 
-    // Cleanup local events
-    cudaEventDestroy(startH2D); cudaEventDestroy(stopH2D);
-    cudaEventDestroy(startKernel); cudaEventDestroy(stopKernel);
-    cudaEventDestroy(startD2H); cudaEventDestroy(stopD2H);
+    // --- Host->Device (asincrono, pinned + stream)
+    cudaEventRecord(startH2D, stream);
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_data, h_input, vector_size,
+                                     cudaMemcpyHostToDevice, stream));
+    cudaEventRecord(stopH2D, stream);
+
+    // --- FFT execution (in stream, su batch intero)
+    cudaEventRecord(startKernel, stream);
+    CHECK_CUFFT_ERROR(cufftExecC2C(plan, d_data, d_data, CUFFT_FORWARD));
+    cudaEventRecord(stopKernel, stream);
+
+    // --- Device->Host (asincrono, pinned + stream)
+    cudaEventRecord(startD2H, stream);
+    CHECK_CUDA_ERROR(cudaMemcpyAsync(h_output, d_data, vector_size,
+                                     cudaMemcpyDeviceToHost, stream));
+    cudaEventRecord(stopD2H, stream);
+
+    // Sync finale
+    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+
+    // Calcolo tempi
+    cudaEventElapsedTime(&h2dTime, startH2D, stopH2D);
+    cudaEventElapsedTime(&kernelTime, startKernel, stopKernel);
+    cudaEventElapsedTime(&d2hTime, startD2H, stopD2H);
+    totalExecTime = h2dTime + kernelTime + d2hTime;
+
+    // Conversione output in std::complex<float>
+    std::vector<std::complex<float>> output(n * batch);
+    for (int i = 0; i < n * batch; i++)
+        output[i] = { h_output[i].x, h_output[i].y };
+
+    // Cleanup
+    cufftDestroy(plan);
+    cudaFree(d_data);
+    cudaFreeHost(h_input);
+    cudaFreeHost(h_output);
+    cudaStreamDestroy(stream);
 
     return output;
 }
@@ -87,71 +109,43 @@ std::vector<std::complex<double>> fft_gpu_cufft(
 // --- MAIN ---
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <num_runs>\n";
+        std::cerr << "Usage: " << argv[0] << " <batch_size> <input_file> [num_runs]\n";
         return 1;
     }
 
-    const char* filename = argv[1];
-    int num_runs = std::max(1, std::stoi(argv[2]));
+    int batch = std::max(1, std::stoi(argv[1]));
+    const char* filename = argv[2];
+    int num_runs = (argc >= 4) ? std::max(1, std::stoi(argv[3])) : 1;
 
-    // --- Read input file
+    // File reading
     auto t_start = std::chrono::high_resolution_clock::now();
     std::ifstream ifs(filename);
     if (!ifs) { std::cerr << "Error opening file.\n"; return 1; }
 
-    std::vector<std::complex<double>> data;
-    double re, im;
+    std::vector<std::complex<float>> data;
+    float re, im;
     while (ifs >> re >> im)
         data.emplace_back(re, im);
     ifs.close();
     auto t_end = std::chrono::high_resolution_clock::now();
     float readTime = std::chrono::duration<float, std::milli>(t_end - t_start).count();
-    std::cout << "[RESULTS] ReadingTime: " << readTime << " ms\n";
+    std::cout << "[RESULTS] ReadingTime: " << readTime << "ms\n";
 
-    int n = data.size();
-    size_t vector_size = n * sizeof(cuDoubleComplex);
-
-    // --- Allocate device memory once
-    cuDoubleComplex* d_data;
-    CHECK_CUDA_ERROR(cudaMalloc(&d_data, vector_size));
-
-    // --- Create FFT plan once (planning time is separate from execution)
-    cufftHandle plan;
-    auto plan_start = std::chrono::high_resolution_clock::now();
-    CHECK_CUFFT_ERROR(cufftPlan1d(&plan, n, CUFFT_Z2Z, 1));
-    auto plan_end = std::chrono::high_resolution_clock::now();
-    float planTime = std::chrono::duration<float, std::milli>(plan_end - plan_start).count();
-    std::cout << "[RESULTS] PlanningTime: " << planTime << " ms\n";
-
-    // --- Run multiple times
-    float totalExecSum = 0, h2dSum = 0, d2hSum = 0, kernelSum = 0;
+    // Run multiple times
+    float totalTimeSum = 0;
     for (int run = 1; run <= num_runs; ++run) {
-        float h2d = 0, d2h = 0, kernel = 0;
-        auto result = fft_gpu_cufft(data, h2d, kernel, d2h, plan, d_data, nullptr);
+        float totalExec = 0, kernelTime = 0, h2dTime = 0, d2hTime = 0;
+        auto result = fft_gpu_cufft(data, batch, totalExec, kernelTime, h2dTime, d2hTime);
 
-        float total = h2d + kernel + d2h;
-        std::cout << "[RESULTS] ExecutionTime(run=" << run << "): " << total << " ms\n";
-        std::cout << "   (Details) H2D: " << h2d << " ms, Kernel: " << kernel << " ms, D2H: " << d2h << " ms\n";
+        std::cout << "[RESULTS] ExecutionTime(run=" << run << "): " << totalExec << "ms\n";
+        std::cout << "  (Details) Host->Device: " << h2dTime << "ms\n";
+        std::cout << "  (Details) Kernel: " << kernelTime << "ms\n";
+        std::cout << "  (Details) Device->Host: " << d2hTime << "ms\n";
 
-        totalExecSum += total;
-        h2dSum += h2d;
-        d2hSum += d2h;
-        kernelSum += kernel;
+        totalTimeSum += totalExec;
     }
 
-    // --- Print averages
-    std::cout << "[RESULTS] Averages over " << num_runs << " runs:\n";
-    std::cout << "   Avg H2D: " << (h2dSum / num_runs) << " ms\n";
-    std::cout << "   Avg Kernel: " << (kernelSum / num_runs) << " ms\n";
-    std::cout << "   Avg D2H: " << (d2hSum / num_runs) << " ms\n";
-    std::cout << "   Avg Total (no plan): " << (totalExecSum / num_runs) << " ms\n";
-    std::cout << "   PlanningTime (one-time): " << planTime << " ms\n";
-    std::cout << "   Total including planning (1 run): " 
-              << planTime + (totalExecSum / num_runs) << " ms\n";
-
-    // --- Cleanup
-    CHECK_CUFFT_ERROR(cufftDestroy(plan));
-    CHECK_CUDA_ERROR(cudaFree(d_data));
+    std::cout << "[RESULTS] TotalTime: " << (readTime + totalTimeSum) << "ms\n";
 
     return 0;
 }
