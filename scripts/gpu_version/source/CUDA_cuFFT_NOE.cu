@@ -109,7 +109,7 @@ std::vector<std::complex<float>> fft_gpu_cufft(
 // --- MAIN ---
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <batch_size> <input_file> [num_runs]\n";
+        std::cerr << "Usage: " << argv[0] << " <threads_per_block> <input_file> [num_runs]\n";
         return 1;
     }
 
