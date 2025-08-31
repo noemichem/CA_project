@@ -17,36 +17,43 @@
     }
 
 // --- Constant PI in GPU memory ---
-__constant__ double d_PI;
+__constant__ float d_PI;
 
 // --- Bit-reversal kernel ---
-__global__ void bit_reverse_kernel(cuDoubleComplex* data, size_t n, int logn) {
+__global__ void bit_reverse_kernel(cuFloatComplex* data, size_t n, int logn) {
     size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
 
-    size_t rev = 0, x = i;
-    for (int b = 0; b < logn; ++b) {
-        rev = (rev << 1) | (x & 1);
-        x >>= 1;
+    size_t rev;
+    if (logn <= 32) {
+        unsigned int idx32 = static_cast<unsigned int>(i);
+        unsigned int r32 = __brev(idx32);                     // inverti i 32 bit
+        rev = static_cast<size_t>(r32 >> (32 - logn));        // prendi i logn bit
+    } else {
+        unsigned long long idx64 = static_cast<unsigned long long>(i);
+        unsigned long long r64 = __brevll(idx64);             // inverti i 64 bit
+        rev = static_cast<size_t>(r64 >> (64 - logn));
     }
 
+    // scambia i valori solo se i < rev (evita doppie permutazioni)
     if (i < rev) {
-        cuDoubleComplex tmp = data[i];
-        data[i] = data[rev];
+        cuFloatComplex tmp = data[i];
+        data[i]  = data[rev];
         data[rev] = tmp;
     }
 }
 
+
 // --- FFT butterfly kernel per stage ---
-// This version uses CUDA's sincospi() intrinsic to compute sine and cosine of π times
-// a normalized argument. Computing sincospi() is often faster and more accurate than
-// computing sin() and cos() separately, and it reduces register pressure.  For each
+// This version uses CUDA's sincospif() intrinsic to compute sine and cosine of π times
+// a normalized argument. Computing sincospif() is often faster and more accurate than
+// computing sinf() and cosf() separately, and it reduces register pressure.  For each
 // butterfly, we compute the twiddle factor `w` as e^{-j 2π j / len}.  We compute
-// sin(2π j / len) and cos(2π j / len) via sinpi/cospi by normalizing the angle
-// to fractions of π.  Since sinpi(x) computes sin(π·x), we set x=2*j/len.  The
+// sinf(2π j / len) and cosf(2π j / len) via sinpi/cospi by normalizing the angle
+// to fractions of π.  Since sinpif(x) computes sinf(π·x), we set x=2*j/len.  The
 // sine of the negative angle is obtained by negating the result.  This avoids
 // computing trigonometric functions that are slower on many architectures.
-__global__ void butterfly_kernel(cuDoubleComplex* data, size_t n, size_t len) {
+__global__ void butterfly_kernel(cuFloatComplex* data, size_t n, size_t len) {
     size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
     size_t j = tid % (len / 2);
     size_t block = tid / (len / 2);
@@ -55,26 +62,26 @@ __global__ void butterfly_kernel(cuDoubleComplex* data, size_t n, size_t len) {
     if (i + j + len / 2 >= n) return;
 
     // Compute the twiddle factor using sincospi.  The angle 2π*j/len is
-    // rewritten as π * (2*j/len).  sincospi(x, &s, &c) computes s=sin(π·x)
-    // and c=cos(π·x).  We then form w = cos(2πj/len) + i·sin(2πj/len), but
+    // rewritten as π * (2*j/len).  sincospif(x, &s, &c) computes s=sinf(π·x)
+    // and c=cosf(π·x).  We then form w = cosf(2πj/len) + i·sinf(2πj/len), but
     // because the original FFT uses a negative sign (e^{-i2πj/len}), the
     // imaginary part is negated.
-    double x = 2.0 * static_cast<double>(j) / static_cast<double>(len);
-    double s, c;
-    // Use CUDA intrinsic sincospi to compute sin(pi * x) and cos(pi * x)
-    sincospi(x, &s, &c);
-    cuDoubleComplex w = make_cuDoubleComplex(c, -s);
+    float x = 2.0f * static_cast<float>(j) / static_cast<float>(len);
+    float s, c;
+    // Use CUDA intrinsic sincospi to compute sinf(pi * x) and cosf(pi * x)
+    sincospif(x, &s, &c);
+    cuFloatComplex w = make_cuFloatComplex(c, -s);
 
-    cuDoubleComplex u = data[i + j];
-    cuDoubleComplex v = cuCmul(data[i + j + len / 2], w);
+    cuFloatComplex u = data[i + j];
+    cuFloatComplex v = cuCmulf(data[i + j + len / 2], w);
 
-    data[i + j] = cuCadd(u, v);
-    data[i + j + len / 2] = cuCsub(u, v);
+    data[i + j] = cuCaddf(u, v);
+    data[i + j + len / 2] = cuCsubf(u, v);
 }
 
 // --- Host GPU FFT wrapper with timing ---
-std::vector<std::complex<double>> fft_gpu(
-    const std::vector<std::complex<double>>& input,
+std::vector<std::complex<float>> fft_gpu(
+    const std::vector<std::complex<float>>& input,
     float& totalExecTime,
     float& kernelTime,
     float& h2dTime,
@@ -92,18 +99,18 @@ std::vector<std::complex<double>> fft_gpu(
 
     CHECK_CUDA_ERROR(cudaEventRecord(start_total));
 
-    const double h_PI = acos(-1.0);
-    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(double)));
+    const float h_PI = acos(-1.0f);
+    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(float)));
 
     size_t n = input.size();
-    size_t buffer_size = n * sizeof(cuDoubleComplex);
+    size_t buffer_size = n * sizeof(cuFloatComplex);
 
-    cuDoubleComplex* d_data;
+    cuFloatComplex* d_data;
     CHECK_CUDA_ERROR(cudaMalloc(&d_data, buffer_size));
 
-    std::vector<cuDoubleComplex> h_input(n);
+    std::vector<cuFloatComplex> h_input(n);
     for (size_t i = 0; i < n; ++i)
-        h_input[i] = make_cuDoubleComplex(input[i].real(), input[i].imag());
+        h_input[i] = make_cuFloatComplex(input[i].real(), input[i].imag());
 
     // --- Host -> Device transfer ---
     CHECK_CUDA_ERROR(cudaEventRecord(start_h2d));
@@ -125,7 +132,7 @@ std::vector<std::complex<double>> fft_gpu(
         // Each stage of the Cooley–Tukey FFT processes len-length blocks.  We compute
         // the number of butterfly operations (n / len) * (len / 2) and launch
         // enough threads to cover them.  The butterfly_kernel internally
-        // computes the twiddle factors using sincospi(), so there is no need to
+        // computes the twiddle factors using sincospif(), so there is no need to
         // compute an angle here.  See butterfly_kernel for details.
         size_t total_pairs = (n / len) * (len / 2);
         int blocks_b = (total_pairs + threads - 1) / threads;
@@ -135,7 +142,7 @@ std::vector<std::complex<double>> fft_gpu(
     }
 
     // --- Device -> Host transfer ---
-    std::vector<cuDoubleComplex> h_output(n);
+    std::vector<cuFloatComplex> h_output(n);
     CHECK_CUDA_ERROR(cudaEventRecord(start_d2h));
     CHECK_CUDA_ERROR(cudaMemcpy(h_output.data(), d_data, buffer_size, cudaMemcpyDeviceToHost));
     CHECK_CUDA_ERROR(cudaEventRecord(stop_d2h));
@@ -151,9 +158,9 @@ std::vector<std::complex<double>> fft_gpu(
     CHECK_CUDA_ERROR(cudaEventElapsedTime(&totalExecTime, start_total, stop_total));
 
     // --- Convert results ---
-    std::vector<std::complex<double>> output(n);
+    std::vector<std::complex<float>> output(n);
     for (size_t i = 0; i < n; ++i)
-        output[i] = { cuCreal(h_output[i]), cuCimag(h_output[i]) };
+        output[i] = { cuCrealf(h_output[i]), cuCimagf(h_output[i]) };
 
     CHECK_CUDA_ERROR(cudaFree(d_data));
     cudaEventDestroy(start_total); cudaEventDestroy(stop_total);
@@ -180,8 +187,8 @@ int main(int argc, char* argv[]) {
     std::ifstream ifs(filename);
     if (!ifs) { std::cerr << "Error opening file " << filename << "\n"; return 1; }
 
-    std::vector<std::complex<double>> data;
-    double re, im;
+    std::vector<std::complex<float>> data;
+    float re, im;
     while (ifs >> re >> im) data.emplace_back(re, im);
     ifs.close();
     auto t_end_read = std::chrono::high_resolution_clock::now();

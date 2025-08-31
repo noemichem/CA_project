@@ -6,11 +6,10 @@
 #include <cuda_runtime.h>
 #include <cuComplex.h>
 #include <chrono>
-#include <iomanip>
 
 using namespace std;
 
-// --- CUDA error checking macro ---
+// --- CUDA error checking ---
 #define CHECK_CUDA_ERROR(err) \
     if (err != cudaSuccess) { \
         cerr << "CUDA Error: " << cudaGetErrorString(err) \
@@ -21,31 +20,33 @@ using namespace std;
 // --- Constant PI in GPU memory ---
 __constant__ double d_PI;
 
-// --- Kernel: performs one FFT stage ---
-__global__ void fft_stage(cuFloatComplex* data, int n, int step) {
+// --- Kernel: FFT stage using only global memory, scalable ---
+__global__ void fft_stage_global(cuFloatComplex* data, int n, int step) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int halfStep = step / 2;
+    int i = (tid / halfStep) * step + (tid % halfStep);
 
-    if (tid < n / 2) {
-        int i = (tid / halfStep) * step + (tid % halfStep);
-
+    if (i + halfStep < n) {
         cuFloatComplex u = data[i];
         cuFloatComplex v = data[i + halfStep];
 
         float angle = -2.0f * d_PI * (tid % halfStep) / step;
-        cuFloatComplex w = make_cuFloatComplex(cosf(angle), sinf(angle));
+        float cosA = cosf(angle);
+        float sinA = sinf(angle);
+        cuFloatComplex w = make_cuFloatComplex(cosA, sinA);
 
-        cuFloatComplex t = make_cuFloatComplex(
-            v.x * w.x - v.y * w.y,
-            v.x * w.y + v.y * w.x
-        );
+        cuFloatComplex t;
+        t.x = v.x * w.x - v.y * w.y;
+        t.y = v.x * w.y + v.y * w.x;
 
-        data[i]            = make_cuFloatComplex(u.x + t.x, u.y + t.y);
-        data[i + halfStep] = make_cuFloatComplex(u.x - t.x, u.y - t.y);
+        data[i].x = u.x + t.x;
+        data[i].y = u.y + t.y;
+        data[i + halfStep].x = u.x - t.x;
+        data[i + halfStep].y = u.y - t.y;
     }
 }
 
-// --- Host function: FFT GPU with detailed timing ---
+// --- Host function: FFT GPU with timing ---
 void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
              float& totalExecTime, float& kernelTime,
              float& h2dTime, float& d2hTime) {
@@ -56,7 +57,6 @@ void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
     int N = input.size();
     size_t size = N * sizeof(cuFloatComplex);
 
-    // Allocate device memory
     cuFloatComplex* d_data;
     CHECK_CUDA_ERROR(cudaMalloc(&d_data, size));
 
@@ -79,7 +79,9 @@ void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
     for (int step = 2; step <= N; step <<= 1) {
         int butterflies = N / 2;
         int blocks = (butterflies + threadsPerBlock - 1) / threadsPerBlock;
-        fft_stage<<<blocks, threadsPerBlock>>>(d_data, N, step);
+
+        fft_stage_global<<<blocks, threadsPerBlock>>>(d_data, N, step);
+        CHECK_CUDA_ERROR(cudaGetLastError());
         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
     }
 
@@ -98,15 +100,12 @@ void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
     CHECK_CUDA_ERROR(cudaEventSynchronize(stopD2H));
     CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, startD2H, stopD2H));
 
-    // Convert back to std::complex
     for (int i = 0; i < N; i++) {
         input[i] = { h_output[i].x, h_output[i].y };
     }
 
-    // Total execution
     totalExecTime = h2dTime + kernelTime + d2hTime;
 
-    // Cleanup
     CHECK_CUDA_ERROR(cudaFree(d_data));
     CHECK_CUDA_ERROR(cudaEventDestroy(startH2D));
     CHECK_CUDA_ERROR(cudaEventDestroy(stopH2D));
@@ -125,9 +124,8 @@ int main(int argc, char* argv[]) {
 
     int threadsPerBlock = stoi(argv[1]);
     const char* filename = argv[2];
-    int numRuns = (argc >= 4) ? std::max(1, std::stoi(argv[3])) : 1; // default 1
+    int numRuns = (argc >= 4) ? max(1, stoi(argv[3])) : 1;
 
-    // Measure file reading time
     auto startRead = chrono::high_resolution_clock::now();
     ifstream ifs(filename);
     if (!ifs) { cerr << "Error opening file.\n"; return 1; }
@@ -138,7 +136,6 @@ int main(int argc, char* argv[]) {
     ifs.close();
     auto endRead = chrono::high_resolution_clock::now();
     float readTime = chrono::duration<float, milli>(endRead - startRead).count();
-
     cout << "[RESULTS] ReadingTime: " << readTime << "ms\n";
 
     if ((data.size() & (data.size() - 1)) != 0) {
@@ -146,7 +143,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Run FFT multiple times according to numRuns
     float totalTimeSum = 0;
     for (int run = 1; run <= numRuns; ++run) {
         float totalExec = 0, kernelTime = 0, h2dTime = 0, d2hTime = 0;
@@ -161,6 +157,5 @@ int main(int argc, char* argv[]) {
     }
 
     cout << "[RESULTS] TotalTime: " << (readTime + totalTimeSum) << "ms\n";
-
     return 0;
 }
