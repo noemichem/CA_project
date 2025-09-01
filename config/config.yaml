@@ -15,8 +15,8 @@ hydra:
     subdir: ${hydra.job.num}
   sweeper:
     params:
-      cpp_program.executable_path: scripts/gpu_version/build/CUDA_cuFFT.exe, scripts/gpu_version/build/CUDA_fft.exe, scripts/gpu_version/build/CUDA_FFT_NOE.exe
-      settings.input_file: data/numbers_1024.txt, data/numbers_16384.txt, data/numbers_131072.txt, data/numbers_262144.txt data/numbers_1048576.txt, data/numbers_134217728.txt
-      settings.num_threads: 32, 64, 128, 256
+      cpp_program.executable_path: scripts/gpu_version/build/CUDA_fft_v5.exe
+      settings.input_file: data/numbers_2097152.txt, data/numbers_4194304.txt
+      settings.num_threads: 256
       settings.device: cuda
       settings.num_run: 10

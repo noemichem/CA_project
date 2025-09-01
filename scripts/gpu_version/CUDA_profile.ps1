@@ -56,7 +56,7 @@ if ($InputFiles.Count -eq 0) {
 foreach ($exe in $ExeFiles) {
     $ExeName = [System.IO.Path]::GetFileNameWithoutExtension($exe.Name)
 
-    if ($ExeName -notmatch '_fft') {
+    if ($ExeName -notmatch 'v3') {
         Write-Host "Skipping $($exe.Name) to perform only NOE profile"
         continue
     }
@@ -72,9 +72,9 @@ foreach ($exe in $ExeFiles) {
             continue
         }
 
-        # Skip large inputs for DFT executables
-        if ($ExeName -match '_fft' -and $NumComplex -gt 1048576) {
-            Write-Host "Skipping $($exe.Name) with $($InputFile.Name) because > 262144 and executable contains 'dft'"
+        # Do only file with 4194304 complex numbers
+        if ($NumComplex -ne 4194304) {
+            Write-Host "Skipping $($InputFile.Name) to perform only 4194304 complex numbers"
             continue
         }
 
