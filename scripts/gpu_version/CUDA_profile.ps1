@@ -56,11 +56,6 @@ if ($InputFiles.Count -eq 0) {
 foreach ($exe in $ExeFiles) {
     $ExeName = [System.IO.Path]::GetFileNameWithoutExtension($exe.Name)
 
-    if ($ExeName -notmatch 'v3') {
-        Write-Host "Skipping $($exe.Name) to perform only NOE profile"
-        continue
-    }
-
     foreach ($InputFile in $InputFiles) {
         $InputName = [System.IO.Path]::GetFileNameWithoutExtension($InputFile.Name)
 
@@ -72,17 +67,12 @@ foreach ($exe in $ExeFiles) {
             continue
         }
 
-        # Do only file with 4194304 complex numbers
-        if ($NumComplex -ne 4194304) {
-            Write-Host "Skipping $($InputFile.Name) to perform only 4194304 complex numbers"
-            continue
-        }
+        $ThreadsPerBlock = 96  # Set the number of threads per block
 
-        $ProfileOut = Join-Path $ProfileDir "${ExeName}_${NumComplex}_PROFILE"
+        $ProfileOut = Join-Path $ProfileDir "${ExeName}_${NumComplex}_${ThreadsPerBlock}_PROFILE"
         
         Write-Host "Profiling $($exe.FullName) with input $($InputFile.FullName) -> $ProfileOut.ncu-rep"
         
-        $ThreadsPerBlock = 256  # example value
         $cmd = "$NCU --set full -f -o `"$ProfileOut`" `"$($exe.FullName)`" $ThreadsPerBlock `"$($InputFile.FullName)`""
         Invoke-Expression $cmd
         

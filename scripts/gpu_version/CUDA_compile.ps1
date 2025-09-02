@@ -1,6 +1,6 @@
 # === CONFIGURATION ===
 $NVCC = "nvcc"  # Assicurati che nvcc sia nel PATH
-$NVCCFLAGS = '-O3 -lineinfo "-gencode=arch=compute_86,code=sm_86"'
+$NVCCFLAGS = '-O3 -Xptxas -v -use_fast_math -lineinfo "-gencode=arch=compute_86,code=sm_86"'
 
 # === GET SCRIPT DIRECTORY ===
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition

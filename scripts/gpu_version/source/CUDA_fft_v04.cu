@@ -17,8 +17,8 @@ using namespace std;
         exit(EXIT_FAILURE); \
     }
 
-// --- Constant PI in GPU memory ---
-__constant__ double d_PI;
+// --- Constant PI in GPU memory (float now) ---
+__constant__ float d_PI;
 
 // --- Kernel: FFT stage using only global memory, scalable ---
 __global__ void fft_stage_global(cuFloatComplex* data, int n, int step) {
@@ -26,23 +26,24 @@ __global__ void fft_stage_global(cuFloatComplex* data, int n, int step) {
     int halfStep = step / 2;
     int i = (tid / halfStep) * step + (tid % halfStep);
 
+    //if spostato fuori per ottimizzare
+    float angle = -2.0f * d_PI * (tid % halfStep) / step;
+    float cosA = cosf(angle);
+    float sinA = sinf(angle);
+    cuFloatComplex w = make_cuFloatComplex(cosA, sinA);
+
     if (i + halfStep < n) {
-        cuFloatComplex u = data[i];
-        cuFloatComplex v = data[i + halfStep];
+    cuFloatComplex u = data[i];
+    cuFloatComplex v = data[i + halfStep];
 
-        float angle = -2.0f * d_PI * (tid % halfStep) / step;
-        float cosA = cosf(angle);
-        float sinA = sinf(angle);
-        cuFloatComplex w = make_cuFloatComplex(cosA, sinA);
+    cuFloatComplex t;
+    t.x = v.x * w.x - v.y * w.y;
+    t.y = v.x * w.y + v.y * w.x;
 
-        cuFloatComplex t;
-        t.x = v.x * w.x - v.y * w.y;
-        t.y = v.x * w.y + v.y * w.x;
-
-        data[i].x = u.x + t.x;
-        data[i].y = u.y + t.y;
-        data[i + halfStep].x = u.x - t.x;
-        data[i + halfStep].y = u.y - t.y;
+    data[i].x          = u.x + t.x;
+    data[i].y          = u.y + t.y;
+    data[i + halfStep].x = u.x - t.x;
+    data[i + halfStep].y = u.y - t.y;
     }
 }
 
@@ -51,8 +52,9 @@ void fft_gpu(vector<complex<float>>& input, int threadsPerBlock,
              float& totalExecTime, float& kernelTime,
              float& h2dTime, float& d2hTime) {
 
-    const double h_PI = acos(-1.0);
-    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(double)));
+    // precompute PI in float
+    const float h_PI = acosf(-1.0f);
+    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(float)));
 
     int N = input.size();
     size_t size = N * sizeof(cuFloatComplex);
