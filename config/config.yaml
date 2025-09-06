@@ -16,7 +16,7 @@ hydra:
   sweeper:
     params:
       settings.input_file: data/numbers_2097152.txt, data/numbers_4194304.txt, data/numbers_8388608.txt, data/numbers_16777216.txt, data/numbers_33554432.txt, data/numbers_67108864.txt, data/numbers_134217728.txt
-      cpp_program.executable_path: scripts/gpu_version/build/CUDA_fft_v01.exe, scripts/gpu_version/build/CUDA_fft_v02.exe, scripts/gpu_version/build/CUDA_fft_v03.exe, scripts/gpu_version/build/CUDA_fft_v04.exe, scripts/gpu_version/build/CUDA_fft_v05.exe, scripts/gpu_version/build/CUDA_fft_v06.exe, scripts/gpu_version/build/CUDA_fft_v07.exe
+      cpp_program.executable_path: scripts/gpu_version/build/CUDA_fft_v01.exe, scripts/gpu_version/build/CUDA_fft_v05.exe, scripts/gpu_version/build/CUDA_fft_v07.exe
       settings.num_threads: 64, 96
       settings.device: cuda
       settings.num_run: 10

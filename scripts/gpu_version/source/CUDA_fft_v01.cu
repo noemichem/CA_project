@@ -48,15 +48,16 @@ __global__ void fft_stage(cuDoubleComplex* a, int n, int len, double ang) {
     a[start + j + len/2] = cuCsub(u, v);
 }
 
-// === GPU FFT (with CUDA events for timing) ===
+// === GPU FFT (timing with bit-reversal separated) ===
 void fft_cuda(vector<complex<double>>& data,
               int threadsPerBlock,
-              float &h2dTime, float &kernelTime, float &d2hTime) {
+              float &totalExecTime, float &gpuTime,
+              float &kernelTime, float &bitreverseTime,
+              float &h2dTime, float &d2hTime) {
     int n = data.size();
     int logn = 0;
     while ((1 << logn) < n) ++logn;
 
-    // Alloc device memory
     cuDoubleComplex* d_data;
     cudaMalloc(&d_data, n * sizeof(cuDoubleComplex));
 
@@ -64,33 +65,28 @@ void fft_cuda(vector<complex<double>>& data,
     for (int i = 0; i < n; i++)
         h_data[i] = make_cuDoubleComplex(data[i].real(), data[i].imag());
 
-    // Events
-    cudaEvent_t startH2D, stopH2D;
-    cudaEvent_t startKernel, stopKernel;
-    cudaEvent_t startD2H, stopD2H;
-    cudaEventCreate(&startH2D);
-    cudaEventCreate(&stopH2D);
-    cudaEventCreate(&startKernel);
-    cudaEventCreate(&stopKernel);
-    cudaEventCreate(&startD2H);
-    cudaEventCreate(&stopD2H);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
     // === Host -> Device ===
-    cudaEventRecord(startH2D);
+    cudaEventRecord(start);
     cudaMemcpy(d_data, h_data.data(), n * sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
-    cudaEventRecord(stopH2D);
-    cudaEventSynchronize(stopH2D);
-    cudaEventElapsedTime(&h2dTime, startH2D, stopH2D);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&h2dTime, start, stop);
 
-    // === Kernel execution ===
-    cudaEventRecord(startKernel);
+    // === Bit-reversal ===
+    cudaEventRecord(start);
     int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock;
-
-    // bit reversal
     bit_reverse<<<numBlocks, threadsPerBlock>>>(d_data, n, logn);
     cudaDeviceSynchronize();
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&bitreverseTime, start, stop);
 
-    // stages
+    // === FFT Stages ===
+    cudaEventRecord(start);
     for (int len = 2; len <= n; len <<= 1) {
         double ang = -2 * PI / len;
         int work_items = n / len * (len/2);
@@ -98,29 +94,26 @@ void fft_cuda(vector<complex<double>>& data,
         fft_stage<<<numBlocksStage, threadsPerBlock>>>(d_data, n, len, ang);
         cudaDeviceSynchronize();
     }
-
-    cudaEventRecord(stopKernel);
-    cudaEventSynchronize(stopKernel);
-    cudaEventElapsedTime(&kernelTime, startKernel, stopKernel);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&kernelTime, start, stop);
 
     // === Device -> Host ===
-    cudaEventRecord(startD2H);
+    cudaEventRecord(start);
     cudaMemcpy(h_data.data(), d_data, n * sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
-    cudaEventRecord(stopD2H);
-    cudaEventSynchronize(stopD2H);
-    cudaEventElapsedTime(&d2hTime, startD2H, stopD2H);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&d2hTime, start, stop);
 
     for (int i = 0; i < n; i++)
         data[i] = complex<double>(cuCreal(h_data[i]), cuCimag(h_data[i]));
 
-    cudaFree(d_data);
+    gpuTime       = bitreverseTime + kernelTime;
+    totalExecTime = h2dTime + gpuTime + d2hTime;
 
-    cudaEventDestroy(startH2D);
-    cudaEventDestroy(stopH2D);
-    cudaEventDestroy(startKernel);
-    cudaEventDestroy(stopKernel);
-    cudaEventDestroy(startD2H);
-    cudaEventDestroy(stopD2H);
+    cudaFree(d_data);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 }
 
 // === MAIN ===
@@ -132,7 +125,7 @@ int main(int argc, char* argv[]) {
 
     int threadsPerBlock = stoi(argv[1]);
     const char* filename = argv[2];
-    int num_runs = (argc >= 4) ? stoi(argv[3]) : 1;
+    int numRuns = (argc >= 4) ? max(1, stoi(argv[3])) : 1;
 
     cout << fixed << setprecision(4);
 
@@ -161,28 +154,32 @@ int main(int argc, char* argv[]) {
     }
 
     auto end_read = chrono::high_resolution_clock::now();
-    auto duration_read = chrono::duration<double, std::milli>(end_read - start_read);
-    cout << "[RESULTS] ReadingTime: " << duration_read.count() << "ms" << endl;
+    float readTime = chrono::duration<float, milli>(end_read - start_read).count();
+    cout << "[RESULTS] ReadingTime: " << readTime << "ms\n";
 
-    // === Executions ===
-    for (int r = 0; r < num_runs; r++) {
+    float totalTimeSum = 0;
+    for (int run = 1; run <= numRuns; run++) {
+        float totalExec=0, gpuTime=0, kernelTime=0, bitreverseTime=0, h2dTime=0, d2hTime=0;
         vector<complex<double>> temp = data;
 
-        auto start_exec = chrono::high_resolution_clock::now();
-        float h2dTime, kernelTime, d2hTime;
-        fft_cuda(temp, threadsPerBlock, h2dTime, kernelTime, d2hTime);
-        auto end_exec = chrono::high_resolution_clock::now();
+        fft_cuda(temp, threadsPerBlock,
+                 totalExec, gpuTime,
+                 kernelTime, bitreverseTime,
+                 h2dTime, d2hTime);
 
-        auto duration_exec = chrono::duration<double, std::milli>(end_exec - start_exec);
-        cout << "[RESULTS] ExecutionTime(run=" << (r+1) << "): " << duration_exec.count() << "ms\n";
+        cout << "[RESULTS] ExecutionTime(run=" << run << "): " << totalExec << "ms\n";
         cout << "  (Details) Host->Device: " << h2dTime << "ms\n";
         cout << "  (Details) Kernel: " << kernelTime << "ms\n";
         cout << "  (Details) Device->Host: " << d2hTime << "ms\n";
+        cout << "  (Details) Bit-reversal: " << bitreverseTime << "ms\n";
+
+        totalTimeSum += totalExec;
     }
 
-    auto end_all = chrono::high_resolution_clock::now();
-    auto duration_total = chrono::duration<double, std::milli>(end_all - start_read);
-    cout << "[RESULTS] TotalTime: " << duration_total.count() << "ms" << endl;
+    cout << "[RESULTS] TotalTime: " << (readTime + totalTimeSum) << "ms\n";
+    if (numRuns > 1) {
+        cout << "[RESULTS] AverageExecutionTime: " << (totalTimeSum / numRuns) << "ms\n";
+    }
 
     return 0;
 }

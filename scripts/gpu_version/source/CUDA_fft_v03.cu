@@ -63,8 +63,8 @@ __global__ void butterfly_kernel(cuFloatComplex* data, size_t n, size_t len) {
 }
 
 // --- Host GPU FFT wrapper with timing ---
-std::vector<std::complex<float>> fft_gpu(
-    const std::vector<std::complex<float>>& input,
+void fft_gpu(
+    std::vector<std::complex<float>>& input,
     int threadsPerBlock,
     float& totalExecTime,
     float& kernelTime,
@@ -72,25 +72,6 @@ std::vector<std::complex<float>> fft_gpu(
     float& d2hTime,
     float& bitreverseTime
 ) {
-    cudaEvent_t start_total, stop_total, start_kernel, stop_kernel;
-    cudaEvent_t start_h2d, stop_h2d, start_d2h, stop_d2h;
-    cudaEvent_t start_bitrev, stop_bitrev;
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_total));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_total));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_kernel));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_kernel));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_h2d));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_h2d));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_d2h));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_d2h));
-    CHECK_CUDA_ERROR(cudaEventCreate(&start_bitrev));
-    CHECK_CUDA_ERROR(cudaEventCreate(&stop_bitrev));
-
-    CHECK_CUDA_ERROR(cudaEventRecord(start_total));
-
-    const float h_PI = acosf(-1.0f);
-    CHECK_CUDA_ERROR(cudaMemcpyToSymbol(d_PI, &h_PI, sizeof(float)));
-
     size_t n = input.size();
     size_t buffer_size = n * sizeof(cuFloatComplex);
     cuFloatComplex* d_data;
@@ -100,25 +81,37 @@ std::vector<std::complex<float>> fft_gpu(
     for (size_t i = 0; i < n; ++i)
         h_input[i] = make_cuFloatComplex(input[i].real(), input[i].imag());
 
-    // --- Host -> Device ---
-    CHECK_CUDA_ERROR(cudaEventRecord(start_h2d));
+    // events
+    cudaEvent_t start, stop;
+    CHECK_CUDA_ERROR(cudaEventCreate(&start));
+    CHECK_CUDA_ERROR(cudaEventCreate(&stop));
+
+    // Host -> Device
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
     CHECK_CUDA_ERROR(cudaMemcpy(d_data, h_input.data(), buffer_size, cudaMemcpyHostToDevice));
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_h2d));
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&h2dTime, start, stop));
 
-    // --- Kernel execution ---
-    CHECK_CUDA_ERROR(cudaEventRecord(start_kernel));
-
+    // Kernel execution
     int blocks = (n + threadsPerBlock - 1) / threadsPerBlock;
     int logn = 0; while ((1u << logn) < n) ++logn;
 
-    // Bit-reversal
-    CHECK_CUDA_ERROR(cudaEventRecord(start_bitrev));
+    // bit-reversal
+    cudaEvent_t startBitrev, stopBitrev;
+    cudaEventCreate(&startBitrev);
+    cudaEventCreate(&stopBitrev);
+    cudaEventRecord(startBitrev);
     bit_reverse_kernel<<<blocks, threadsPerBlock>>>(d_data, n, logn);
     CHECK_CUDA_ERROR(cudaGetLastError());
     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_bitrev));
+    cudaEventRecord(stopBitrev);
+    cudaEventSynchronize(stopBitrev);
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&bitreverseTime, startBitrev, stopBitrev));
+    cudaEventDestroy(startBitrev);
+    cudaEventDestroy(stopBitrev);
 
-    // FFT stages
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
     for (size_t len = 2; len <= n; len <<= 1) {
         size_t total_pairs = (n / len) * (len / 2);
         int blocks_b = (total_pairs + threadsPerBlock - 1) / threadsPerBlock;
@@ -126,37 +119,27 @@ std::vector<std::complex<float>> fft_gpu(
         CHECK_CUDA_ERROR(cudaGetLastError());
         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
     }
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, start, stop));
 
-    // --- Device -> Host ---
+    // Device -> Host
     std::vector<cuFloatComplex> h_output(n);
-    CHECK_CUDA_ERROR(cudaEventRecord(start_d2h));
+    CHECK_CUDA_ERROR(cudaEventRecord(start));
     CHECK_CUDA_ERROR(cudaMemcpy(h_output.data(), d_data, buffer_size, cudaMemcpyDeviceToHost));
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_d2h));
+    CHECK_CUDA_ERROR(cudaEventRecord(stop));
+    CHECK_CUDA_ERROR(cudaEventSynchronize(stop));
+    CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, start, stop));
 
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_kernel));
-    CHECK_CUDA_ERROR(cudaEventRecord(stop_total));
-    CHECK_CUDA_ERROR(cudaEventSynchronize(stop_total));
-
-    // --- Compute timings ---
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&h2dTime, start_h2d, stop_h2d));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&kernelTime, start_kernel, stop_kernel));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&d2hTime, start_d2h, stop_d2h));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&totalExecTime, start_total, stop_total));
-    CHECK_CUDA_ERROR(cudaEventElapsedTime(&bitreverseTime, start_bitrev, stop_bitrev));
-
-    // --- Convert results ---
-    std::vector<std::complex<float>> output(n);
+    // Convert results
     for (size_t i = 0; i < n; ++i)
-        output[i] = { cuCrealf(h_output[i]), cuCimagf(h_output[i]) };
+        input[i] = { cuCrealf(h_output[i]), cuCimagf(h_output[i]) };
+
+    totalExecTime = h2dTime + kernelTime + d2hTime + bitreverseTime;
 
     CHECK_CUDA_ERROR(cudaFree(d_data));
-    cudaEventDestroy(start_total); cudaEventDestroy(stop_total);
-    cudaEventDestroy(start_kernel); cudaEventDestroy(stop_kernel);
-    cudaEventDestroy(start_h2d); cudaEventDestroy(stop_h2d);
-    cudaEventDestroy(start_d2h); cudaEventDestroy(stop_d2h);
-    cudaEventDestroy(start_bitrev); cudaEventDestroy(stop_bitrev);
-
-    return output;
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 }
 
 // --- MAIN ---
@@ -190,7 +173,8 @@ int main(int argc, char* argv[]) {
     float total_exec_ms = 0.0f;
     for (int run = 1; run <= num_runs; ++run) {
         float execTime=0, kernelTime=0, h2dTime=0, d2hTime=0, bitreverseTime=0;
-        auto result = fft_gpu(data, threadsPerBlock, execTime, kernelTime, h2dTime, d2hTime, bitreverseTime);
+        std::vector<std::complex<float>> inputCopy = data;
+        fft_gpu(inputCopy, threadsPerBlock, execTime, kernelTime, h2dTime, d2hTime, bitreverseTime);
 
         std::cout << "[RESULTS] ExecutionTime(run=" << run << "): " << execTime << "ms\n";
         std::cout << "  (Details) Host->Device: " << h2dTime << "ms\n";
@@ -201,7 +185,10 @@ int main(int argc, char* argv[]) {
         total_exec_ms += execTime;
     }
 
-    std::cout << "[RESULTS] TotalTime: " << read_ms + total_exec_ms << "ms\n";
+    std::cout << "[RESULTS] TotalTime: " << (read_ms + total_exec_ms) << "ms\n";
+    if (num_runs > 1) {
+        std::cout << "[RESULTS] AverageExecutionTime: " << (total_exec_ms / num_runs) << "ms\n";
+    }
 
     return 0;
 }

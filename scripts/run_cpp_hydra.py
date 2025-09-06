@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 
 # Paths for storing CSV results
 CPU_CSV = "results/tables/CPU_details.csv"
-GPU_CSV = "results/tables/GPU_details.csv"
+GPU_CSV = "results/tables/GPU_details_2.csv"
 
 # ---------------------------
 # Logging configuration
@@ -20,9 +20,7 @@ log = logging.getLogger(__name__)
 # ---------------------------
 def run_executable(executable, num_threads, input_file, inner_runs):
     """
-    Run the C++ program with given parameters:
-    executable num_threads input_file inner_runs
-    inner_runs = how many times the algorithm is repeated internally
+    Run the C++ program and parse timing results.
     """
     cmd = [executable, str(num_threads), input_file, str(inner_runs)]
 
@@ -32,7 +30,6 @@ def run_executable(executable, num_threads, input_file, inner_runs):
         log.error(f"Execution error: {e}")
         return None
 
-    # Log stdout and stderr
     if result.stdout:
         for line in result.stdout.splitlines():
             log.info(f"[C++ STDOUT] {line}")
@@ -43,22 +40,54 @@ def run_executable(executable, num_threads, input_file, inner_runs):
         log.error(f"Program exited with code {result.returncode}")
         return None
 
-    # Parse execution times from output
+    # Parse execution times
     output = result.stdout.splitlines()
-    times = {"ReadingTime": None, "TotalTime": None, "ExecutionTimes": []}
+    times = {
+        "ReadingTime": None,
+        "TotalTime": None,
+        "ExecutionRuns": {}  # run_id -> dict with ExecutionTime, KernelTime, TransferTime
+    }
 
+    current_run = None
     for line in output:
         if line.startswith("[RESULTS] ReadingTime:"):
             m = re.search(r"([\d.]+)ms", line)
             if m:
                 times["ReadingTime"] = float(m.group(1))
+
         elif line.startswith("[RESULTS] ExecutionTime"):
             m_run = re.search(r"run=(\d+)", line)
             m_val = re.search(r"([\d.]+)ms", line)
             if m_run and m_val:
                 run_id = int(m_run.group(1))
-                val = float(m_val.group(1))
-                times["ExecutionTimes"].append((run_id, val))
+                exec_time = float(m_val.group(1))
+                times["ExecutionRuns"][run_id] = {
+                    "ExecutionTime": exec_time,
+                    "KernelTime": 0.0,
+                    "TransferTime": 0.0
+                }
+                current_run = run_id
+
+        elif "(Details) Kernel:" in line:
+            m = re.search(r"([\d.]+)ms", line)
+            if m and current_run is not None:
+                times["ExecutionRuns"][current_run]["KernelTime"] += float(m.group(1))
+
+        elif "(Details) Bit-reversal:" in line:
+            m = re.search(r"([\d.]+)ms", line)
+            if m and current_run is not None:
+                times["ExecutionRuns"][current_run]["KernelTime"] += float(m.group(1))
+
+        elif "(Details) Host->Device:" in line:
+            m = re.search(r"([\d.]+)ms", line)
+            if m and current_run is not None:
+                times["ExecutionRuns"][current_run]["TransferTime"] += float(m.group(1))
+
+        elif "(Details) Device->Host:" in line:
+            m = re.search(r"([\d.]+)ms", line)
+            if m and current_run is not None:
+                times["ExecutionRuns"][current_run]["TransferTime"] += float(m.group(1))
+
         elif line.startswith("[RESULTS] TotalTime:"):
             m = re.search(r"([\d.]+)ms", line)
             if m:
@@ -66,13 +95,10 @@ def run_executable(executable, num_threads, input_file, inner_runs):
 
     return times
 
-# ---------------------------
-# Save results to CSV
-# ---------------------------
+
 def save_to_csv(times, executable, num_threads, input_file, inner_runs, device, num_execution):
     """
-    Save the parsed execution times to the CSV file.
-    Handles CPU and GPU (CUDA) separately.
+    Save the parsed execution times (including kernel and transfer) to CSV.
     """
     os.makedirs("results/tables", exist_ok=True)
     is_cuda = device == "cuda"
@@ -87,17 +113,23 @@ def save_to_csv(times, executable, num_threads, input_file, inner_runs, device, 
 
         # Write header if file does not exist
         if not file_exists:
-            header = ["Num Execution", "Threads per Block" if is_cuda else "Num Threads",
-                      "Input File", "Run", "Execution Time (ms)", "Executable"]
+            header = ["Num Execution",
+                      "Threads per Block" if is_cuda else "Num Threads",
+                      "Input File", "Run",
+                      "Execution Time (ms)",
+                      "Kernel Time (ms)",
+                      "Transfer Time (ms)",
+                      "Executable"]
             writer.writerow(header)
 
-        # Write each execution time
-        for run_id, val in sorted(times["ExecutionTimes"]):
+        # Write each execution time with details
+        for run_id, vals in sorted(times["ExecutionRuns"].items()):
             threads_value = None if is_cuda and "cuFFT" in exe_name else num_threads
-            row = [num_execution, threads_value, file_name, run_id, val, exe_name]
+            row = [num_execution, threads_value, file_name,
+                   run_id, vals["ExecutionTime"], vals["KernelTime"], vals["TransferTime"], exe_name]
             writer.writerow(row)
 
-    log.info(f"{len(times['ExecutionTimes'])} results saved in {csv_path} (Num Execution = {num_execution})")
+    log.info(f"{len(times['ExecutionRuns'])} results saved in {csv_path} (Num Execution = {num_execution})")
 
 # ---------------------------
 # Hydra main function

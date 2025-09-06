@@ -29,12 +29,16 @@ def average_execution_time(csv_path):
     # Fill missing thread counts with -1 and convert to integer
     df[x_col] = df[x_col].fillna(-1).astype(int).astype(str)
 
-    # Group by relevant columns and compute mean
+    # Group by relevant columns and compute mean of execution time, kernel time and transfer time
     group_cols = [x_col, "Input File", "Executable"]
-    grouped = df.groupby(group_cols, as_index=False)["Execution Time (ms)"].mean()
+    grouped = df.groupby(group_cols, as_index=False)[
+        ["Execution Time (ms)", "Kernel Time (ms)", "Transfer Time (ms)"]
+    ].mean()
 
     # Rename column
     grouped = grouped.rename(columns={"Execution Time (ms)": "Avg Execution Time (ms)"})  # type: ignore
+    grouped = grouped.rename(columns={"Kernel Time (ms)": "Avg Kernel Time (ms)"})  # type: ignore
+    grouped = grouped.rename(columns={"Transfer Time (ms)": "Avg Transfer Time (ms)"})  # type: ignore
 
     # Ensure thread column is integer (for safety)
     grouped[x_col] = grouped[x_col].astype(int)
