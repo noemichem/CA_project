@@ -52,5 +52,6 @@
 *.zip
 
 # logs and data
-logs
+multirun
+outputs
 data/*.txt
